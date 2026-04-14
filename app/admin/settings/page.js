@@ -73,7 +73,7 @@ export default function SettingsPage() {
   }
 
   return (
-    <AdminShell>
+    <AdminShell restaurantName={settings?.name}>
       <div className="max-w-2xl space-y-6">
         <div>
           <h1 className="font-display text-3xl text-gold">Settings</h1>

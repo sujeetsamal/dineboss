@@ -5,7 +5,7 @@ import { motion } from 'framer-motion';
 import { Clock, ChefHat, Check } from 'lucide-react';
 import toast from 'react-hot-toast';
 import AdminShell from '@/components/AdminShell';
-import { subscribeToOrders, updateOrderStatus } from '@/lib/firestore';
+import { getRestaurant, subscribeToOrders, updateOrderStatus } from '@/lib/firestore';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
 
 const statusColors = {
@@ -21,9 +21,19 @@ const statusIcons = {
 };
 
 export default function LiveOrdersPage() {
-  const { loading, restaurantId, error: userError, setError: setUserError } = useCurrentUser({ allowedRoles: ['admin'] });
+  const { loading, restaurantId, error: userError } = useCurrentUser({ allowedRoles: ['admin'] });
+  const [restaurant, setRestaurant] = useState(null);
   const [orders, setOrders] = useState([]);
   const [error, setError] = useState('');
+
+  useEffect(() => {
+    if (!restaurantId) return;
+    getRestaurant(restaurantId)
+      .then((data) => {
+        if (data) setRestaurant(data);
+      })
+      .catch((err) => setError(err.message || 'Failed to load restaurant'));
+  }, [restaurantId]);
 
   useEffect(() => {
     if (!restaurantId) return;
@@ -64,7 +74,10 @@ export default function LiveOrdersPage() {
   }
 
   return (
-    <AdminShell>
+    <AdminShell
+      restaurantName={restaurant?.name}
+      activeOrders={orders.filter((o) => o.status !== 'served').length}
+    >
       <div className="space-y-6">
         <div>
           <h1 className="font-display text-3xl text-gold">Live Orders</h1>
