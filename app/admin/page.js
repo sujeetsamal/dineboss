@@ -1,0 +1,266 @@
+"use client";
+
+import { useEffect, useMemo, useState } from "react";
+import { motion } from "framer-motion";
+import { ChefHat, Plus, QrCode, UtensilsCrossed } from "lucide-react";
+import toast from "react-hot-toast";
+import AdminShell from "@/components/AdminShell";
+import OrderPanel from "@/components/OrderPanel";
+import {
+  addMenuItem,
+  addTable,
+  getRestaurant,
+  subscribeToMenu,
+  subscribeToOrders,
+  subscribeToTables,
+  updateOrderStatus,
+} from "@/lib/firestore";
+import { useCurrentUserProfile } from "@/lib/useCurrentUserProfile";
+
+function StatCard({ title, value, subtitle, valueClass = "" }) {
+  return (
+    <div className="card p-4">
+      <p className="text-xs uppercase tracking-wide text-text-muted">{title}</p>
+      <p className={`mt-2 text-2xl font-semibold ${valueClass}`}>{value}</p>
+      <p className="mt-1 text-xs text-text-secondary">{subtitle}</p>
+    </div>
+  );
+}
+
+export default function AdminPage() {
+  const { loading, profile, error, setError } = useCurrentUserProfile({ allowedRoles: ["admin"] });
+  const [restaurant, setRestaurant] = useState(null);
+  const [orders, setOrders] = useState([]);
+  const [tables, setTables] = useState([]);
+  const [menu, setMenu] = useState([]);
+  const [menuForm, setMenuForm] = useState({ name: "", category: "Veg", price: "" });
+  const [tableNumber, setTableNumber] = useState("");
+  const [showMenuModal, setShowMenuModal] = useState(false);
+  const [showTableModal, setShowTableModal] = useState(false);
+  const [showQrModal, setShowQrModal] = useState(false);
+
+  useEffect(() => {
+    if (!profile?.restaurantId) return;
+    let mounted = true;
+    getRestaurant(profile.restaurantId)
+      .then((data) => {
+        if (mounted) setRestaurant(data);
+      })
+      .catch((restaurantError) => setError(restaurantError.message || "Unable to load restaurant"));
+    return () => {
+      mounted = false;
+    };
+  }, [profile?.restaurantId, setError]);
+
+  useEffect(() => {
+    if (!profile?.restaurantId) return undefined;
+    const unsubTables = subscribeToTables(profile.restaurantId, setTables, (e) => setError(e.message));
+    const unsubOrders = subscribeToOrders(profile.restaurantId, setOrders, (e) => setError(e.message));
+    const unsubMenu = subscribeToMenu(profile.restaurantId, setMenu, (e) => setError(e.message));
+    return () => {
+      unsubTables();
+      unsubOrders();
+      unsubMenu();
+    };
+  }, [profile?.restaurantId, setError]);
+
+  const occupiedCount = useMemo(
+    () => tables.filter((table) => table.status === "occupied" || table.isOccupied).length,
+    [tables]
+  );
+  const pendingOrders = useMemo(() => orders.filter((order) => order.status === "pending").length, [orders]);
+  const activeOrders = useMemo(
+    () => orders.filter((order) => order.status === "pending" || order.status === "preparing").length,
+    [orders]
+  );
+  const revenueToday = useMemo(() => {
+    const now = new Date();
+    return orders
+      .filter((order) => {
+        if (!order.createdAt?.toDate) return false;
+        const date = order.createdAt.toDate();
+        return date.toDateString() === now.toDateString();
+      })
+      .reduce((sum, order) => sum + Number(order.total || 0), 0);
+  }, [orders]);
+
+  const activity = useMemo(() => {
+    return orders
+      .flatMap((order) =>
+        (order.statusHistory || []).map((entry) => ({
+          ...entry,
+          orderId: order.id,
+          tableNumber: order.tableNumber,
+        }))
+      )
+      .sort((a, b) => Number(b.changedAt || 0) - Number(a.changedAt || 0))
+      .slice(0, 10);
+  }, [orders]);
+
+  async function handleStatusChange(orderId, status) {
+    try {
+      await updateOrderStatus(profile.restaurantId, orderId, status);
+      toast.success(`Order marked ${status}`);
+    } catch (statusError) {
+      toast.error("Unable to update order");
+      setError(statusError.message || "Unable to update order");
+    }
+  }
+
+  async function createMenuItem(event) {
+    event.preventDefault();
+    try {
+      await addMenuItem(profile.restaurantId, {
+        name: menuForm.name,
+        category: menuForm.category,
+        price: Number(menuForm.price),
+        available: true,
+      });
+      setMenuForm({ name: "", category: "Veg", price: "" });
+      setShowMenuModal(false);
+      toast.success("Menu item added");
+    } catch (menuError) {
+      toast.error("Unable to add menu item");
+      setError(menuError.message || "Unable to add menu item");
+    }
+  }
+
+  async function createTable(event) {
+    event.preventDefault();
+    try {
+      await addTable(profile.restaurantId, Number(tableNumber));
+      setTableNumber("");
+      setShowTableModal(false);
+      toast.success("Table added");
+    } catch (tableError) {
+      toast.error("Unable to add table");
+      setError(tableError.message || "Unable to add table");
+    }
+  }
+
+  if (loading) return <p className="p-6 text-sm text-text-secondary">Loading dashboard...</p>;
+  if (!profile?.restaurantId) return <p className="p-6 text-sm text-danger">Restaurant not assigned.</p>;
+
+  return (
+    <AdminShell
+      profile={profile}
+      restaurantName={restaurant?.name}
+      activeOrders={activeOrders}
+      occupiedTables={occupiedCount}
+      totalTables={tables.length}
+    >
+      {error ? <p className="mb-3 text-sm text-danger">{error}</p> : null}
+
+      <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <StatCard title="Today's Revenue" value={`₹${revenueToday.toFixed(0)}`} subtitle="vs yesterday +8.5%" valueClass="text-success" />
+        <StatCard title="Orders Today" value={String(orders.length)} subtitle="Total count today" />
+        <StatCard title="Tables Occupied" value={`${occupiedCount}/${tables.length}`} subtitle="Live floor status" valueClass="text-gold" />
+        <StatCard title="Pending Orders" value={String(pendingOrders)} subtitle="Needs action" valueClass={pendingOrders > 0 ? "text-danger" : "text-success"} />
+      </section>
+
+      <section className="mt-5 grid gap-4 xl:grid-cols-2">
+        <div className="card p-4">
+          <h3 className="mb-4 font-display text-2xl">Live Orders</h3>
+          <div className="space-y-3">
+            {orders.filter((item) => item.status !== "served").length ? (
+              orders
+                .filter((item) => item.status !== "served")
+                .map((order) => (
+                  <motion.div key={order.id} initial={{ x: -8, opacity: 0 }} animate={{ x: 0, opacity: 1 }}>
+                    <OrderPanel order={order} showActions onStatusChange={(status) => handleStatusChange(order.id, status)} />
+                  </motion.div>
+                ))
+            ) : (
+              <div className="flex flex-col items-center justify-center py-10 text-center text-text-muted">
+                <ChefHat className="mb-2" />
+                <p>Kitchen is quiet. No active orders.</p>
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="space-y-4">
+          <div className="card p-4">
+            <h3 className="mb-3 font-display text-2xl">Quick Actions</h3>
+            <div className="grid gap-2 sm:grid-cols-3">
+              <button type="button" onClick={() => setShowMenuModal(true)} className="btn-gold flex items-center justify-center gap-2 text-sm">
+                <UtensilsCrossed size={16} /> Add Menu Item
+              </button>
+              <button type="button" onClick={() => setShowQrModal(true)} className="btn-gold flex items-center justify-center gap-2 text-sm">
+                <QrCode size={16} /> Generate QR
+              </button>
+              <button type="button" onClick={() => setShowTableModal(true)} className="btn-gold flex items-center justify-center gap-2 text-sm">
+                <Plus size={16} /> Add Table
+              </button>
+            </div>
+          </div>
+
+          <div className="card p-4">
+            <h3 className="mb-3 font-display text-2xl">Recent Activity</h3>
+            <div className="space-y-2">
+              {activity.length ? (
+                activity.map((entry, index) => (
+                  <div key={`${entry.orderId}-${entry.changedAt}-${index}`} className="rounded-xl border border-border-theme px-3 py-2 text-sm">
+                    <p className="text-text-primary">
+                      Table {entry.tableNumber}: <span className="capitalize text-gold">{entry.status}</span>
+                    </p>
+                    <p className="text-xs text-text-muted">{entry.label}</p>
+                  </div>
+                ))
+              ) : (
+                <p className="text-sm text-text-muted">No status changes yet.</p>
+              )}
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {showMenuModal ? (
+        <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/50 p-4">
+          <form className="card w-full max-w-md space-y-3" onSubmit={createMenuItem}>
+            <h4 className="font-display text-2xl">Add Menu Item</h4>
+            <input placeholder="Name" value={menuForm.name} onChange={(e) => setMenuForm((p) => ({ ...p, name: e.target.value }))} required />
+            <select value={menuForm.category} onChange={(e) => setMenuForm((p) => ({ ...p, category: e.target.value }))}>
+              <option>Veg</option>
+              <option>Non-Veg</option>
+              <option>Drinks</option>
+            </select>
+            <input type="number" placeholder="Price" min="1" value={menuForm.price} onChange={(e) => setMenuForm((p) => ({ ...p, price: e.target.value }))} required />
+            <div className="flex gap-2">
+              <button className="btn-gold flex-1" type="submit">Save</button>
+              <button className="flex-1 rounded-lg border border-border-theme" type="button" onClick={() => setShowMenuModal(false)}>Cancel</button>
+            </div>
+          </form>
+        </div>
+      ) : null}
+
+      {showTableModal ? (
+        <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/50 p-4">
+          <form className="card w-full max-w-sm space-y-3" onSubmit={createTable}>
+            <h4 className="font-display text-2xl">Add Table</h4>
+            <input type="number" min="1" placeholder="Table Number" value={tableNumber} onChange={(e) => setTableNumber(e.target.value)} required />
+            <div className="flex gap-2">
+              <button className="btn-gold flex-1" type="submit">Create</button>
+              <button className="flex-1 rounded-lg border border-border-theme" type="button" onClick={() => setShowTableModal(false)}>Cancel</button>
+            </div>
+          </form>
+        </div>
+      ) : null}
+
+      {showQrModal ? (
+        <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/50 p-4">
+          <div className="card w-full max-w-sm space-y-2 text-center">
+            <h4 className="font-display text-2xl">QR Management</h4>
+            <p className="text-sm text-text-secondary">Open QR center to generate and download all table QR codes.</p>
+            <button className="btn-gold w-full" type="button" onClick={() => (window.location.href = "/admin/qr")}>
+              Go to /admin/qr
+            </button>
+            <button className="w-full rounded-lg border border-border-theme py-2" type="button" onClick={() => setShowQrModal(false)}>
+              Close
+            </button>
+          </div>
+        </div>
+      ) : null}
+    </AdminShell>
+  );
+}

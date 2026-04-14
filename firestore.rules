@@ -1,0 +1,42 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isAuth() {
+      return request.auth != null;
+    }
+    function userData() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+    function isAdmin(rId) {
+      return isAuth() && userData().restaurantId == rId && userData().role == 'admin';
+    }
+    function isStaff(rId) {
+      return isAuth() && userData().restaurantId == rId;
+    }
+
+    match /users/{uid} {
+      allow read: if isAuth() && (request.auth.uid == uid || userData().restaurantId == resource.data.restaurantId);
+      allow create: if isAuth();
+      allow update: if isAuth() && (request.auth.uid == uid || isAdmin(resource.data.restaurantId));
+    }
+    match /restaurants/{rId} {
+      allow read: if isStaff(rId);
+      allow create: if isAuth();
+      allow update, delete: if isAdmin(rId);
+    }
+    match /menus/{rId}/items/{itemId} {
+      allow read: if true;
+      allow write: if isAdmin(rId);
+    }
+    match /orders/{rId}/orders/{orderId} {
+      allow create: if true;
+      allow read: if isStaff(rId);
+      allow update: if isStaff(rId);
+      allow delete: if isAdmin(rId);
+    }
+    match /tables/{rId}/tables/{tableId} {
+      allow read: if true;
+      allow write: if isStaff(rId);
+    }
+  }
+}
