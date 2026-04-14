@@ -1,13 +1,12 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { addDoc, collection, deleteDoc, doc, onSnapshot, orderBy, query, serverTimestamp, updateDoc } from "firebase/firestore";
+// Firestore helpers only; no direct Firestore usage
 import { Pencil, Trash2, UtensilsCrossed } from "lucide-react";
 import toast from "react-hot-toast";
 import AdminShell from "@/components/AdminShell";
-import { db } from "@/lib/firebase";
-import { getRestaurant, subscribeToOrders, subscribeToTables } from "@/lib/firestore";
-import { useCurrentUserProfile } from "@/lib/useCurrentUserProfile";
+import { getRestaurant, subscribeToOrders, subscribeToTables, subscribeToMenu, addMenuItem, updateMenuItem, deleteMenuItem } from "@/lib/firestore";
+import { useCurrentUser } from "@/hooks/useCurrentUser";
 
 const DEFAULT_FORM = {
   name: "",
@@ -25,8 +24,7 @@ function categoryBadge(category) {
 }
 
 export default function AdminMenuPage() {
-  const { loading: authLoading, profile, error, setError } = useCurrentUserProfile({ allowedRoles: ["admin"] });
-  const restaurantId = profile?.restaurantId || "";
+  const { loading: authLoading, user, role, restaurantId, error, setError } = useCurrentUser({ allowedRoles: ["admin"] });
   const [restaurantName, setRestaurantName] = useState("");
   const [tables, setTables] = useState([]);
   const [orders, setOrders] = useState([]);
@@ -63,11 +61,10 @@ export default function AdminMenuPage() {
   useEffect(() => {
     if (!restaurantId) return undefined;
     setLoadingItems(true);
-    const itemsQuery = query(collection(db, `menus/${restaurantId}/items`), orderBy("name", "asc"));
-    const unsubscribe = onSnapshot(
-      itemsQuery,
-      (snapshot) => {
-        setItems(snapshot.docs.map((item) => ({ id: item.id, ...item.data() })));
+    const unsubscribe = subscribeToMenu(
+      restaurantId,
+      (items) => {
+        setItems(items);
         setLoadingItems(false);
       },
       (snapshotError) => {
@@ -129,18 +126,13 @@ export default function AdminMenuPage() {
         category: form.category,
         price: Number(form.price),
         description: form.description.trim(),
-        isAvailable: Boolean(form.isAvailable),
         available: Boolean(form.isAvailable),
-        restaurantId,
       };
       if (editingItem?.id) {
-        await updateDoc(doc(db, `menus/${restaurantId}/items/${editingItem.id}`), payload);
+        await updateMenuItem(restaurantId, editingItem.id, payload);
         toast.success("Item updated");
       } else {
-        await addDoc(collection(db, `menus/${restaurantId}/items`), {
-          ...payload,
-          createdAt: serverTimestamp(),
-        });
+        await addMenuItem(restaurantId, payload);
         toast.success("Item added");
       }
       closeModal();
@@ -157,7 +149,7 @@ export default function AdminMenuPage() {
     const next = !current;
     setItems((prev) => prev.map((row) => (row.id === item.id ? { ...row, isAvailable: next, available: next } : row)));
     try {
-      await updateDoc(doc(db, `menus/${restaurantId}/items/${item.id}`), { isAvailable: next, available: next });
+      await updateMenuItem(restaurantId, item.id, { isAvailable: next, available: next });
     } catch (toggleError) {
       setItems((prev) => prev.map((row) => (row.id === item.id ? { ...row, isAvailable: current, available: current } : row)));
       setError(toggleError.message || "Unable to update availability");
@@ -167,7 +159,7 @@ export default function AdminMenuPage() {
   async function handleDelete(item) {
     if (!restaurantId) return;
     try {
-      await deleteDoc(doc(db, `menus/${restaurantId}/items/${item.id}`));
+      await deleteMenuItem(restaurantId, item.id);
       toast.success("Item deleted");
       setDeleteId("");
     } catch (deleteError) {
@@ -190,7 +182,6 @@ export default function AdminMenuPage() {
 
   return (
     <AdminShell
-      profile={profile}
       restaurantName={restaurantName}
       activeOrders={activeOrders}
       occupiedTables={occupied}

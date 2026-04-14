@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import { auth } from "@/lib/firebase";
 import toast from "react-hot-toast";
+import { useCurrentUser } from "@/hooks/useCurrentUser";
 
 const NAV_ITEMS = [
   { href: "/admin", icon: LayoutDashboard, label: "Dashboard" },
@@ -30,13 +31,13 @@ const NAV_ITEMS = [
 ];
 
 export default function AdminShell({
-  profile,
   restaurantName,
   activeOrders = 0,
   occupiedTables = 0,
   totalTables = 0,
   children,
 }) {
+  const { user } = useCurrentUser();
   const pathname = usePathname();
   const router = useRouter();
 
@@ -77,7 +78,7 @@ export default function AdminShell({
           })}
         </nav>
         <div className="border-t border-border-theme p-4 text-xs text-text-secondary">
-          <p className="truncate">{profile?.email}</p>
+          <p className="truncate">{user?.email}</p>
           <button type="button" onClick={handleLogout} className="mt-2 w-full rounded-lg border border-border-theme px-3 py-2">
             Logout
           </button>
@@ -87,7 +88,7 @@ export default function AdminShell({
       <div className="flex min-w-0 flex-1 flex-col">
         <header className="border-b border-border-theme px-4 py-4 md:px-6">
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <h2 className="font-display text-2xl">Good morning, {profile?.displayName || "Chef"} 👋</h2>
+            <h2 className="font-display text-2xl">Good morning, {user?.displayName || "Chef"} 👋</h2>
             <div className="flex flex-wrap items-center gap-2 text-xs">
               <span className="badge-amber">
                 Tables: {occupiedTables}/{totalTables} occupied

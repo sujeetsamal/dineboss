@@ -3,13 +3,12 @@
 import { useEffect, useMemo, useState } from "react";
 import { initializeApp, getApps } from "firebase/app";
 import { createUserWithEmailAndPassword, getAuth } from "firebase/auth";
-import { collection, doc, onSnapshot, query, serverTimestamp, setDoc, updateDoc, where } from "firebase/firestore";
+// Firestore helpers only; no direct Firestore usage
 import { Users } from "lucide-react";
 import toast from "react-hot-toast";
 import AdminShell from "@/components/AdminShell";
-import { db, firebaseConfig } from "@/lib/firebase";
-import { getRestaurant, subscribeToOrders, subscribeToTables } from "@/lib/firestore";
-import { useCurrentUserProfile } from "@/lib/useCurrentUserProfile";
+import { getRestaurant, subscribeToOrders, subscribeToTables, subscribeToStaff, disableStaffUser, createStaffUser } from "@/lib/firestore";
+import { useCurrentUser } from "@/hooks/useCurrentUser";
 
 function getInitials(value) {
   const text = String(value || "").trim();
@@ -23,8 +22,7 @@ function getInitials(value) {
 }
 
 export default function AdminStaffPage() {
-  const { loading: authLoading, profile, error, setError } = useCurrentUserProfile({ allowedRoles: ["admin"] });
-  const restaurantId = profile?.restaurantId || "";
+  const { loading: authLoading, user, role, restaurantId, error, setError } = useCurrentUser({ allowedRoles: ["admin"] });
   const [restaurantName, setRestaurantName] = useState("");
   const [tables, setTables] = useState([]);
   const [orders, setOrders] = useState([]);
@@ -59,15 +57,10 @@ export default function AdminStaffPage() {
   useEffect(() => {
     if (!restaurantId) return undefined;
     setLoadingStaff(true);
-    const staffQuery = query(
-      collection(db, "users"),
-      where("role", "==", "waiter"),
-      where("restaurantId", "==", restaurantId)
-    );
-    const unsubscribe = onSnapshot(
-      staffQuery,
-      (snapshot) => {
-        setStaff(snapshot.docs.map((item) => ({ id: item.id, ...item.data() })));
+    const unsubscribe = subscribeToStaff(
+      restaurantId,
+      (staff) => {
+        setStaff(staff);
         setLoadingStaff(false);
       },
       (snapshotError) => {
@@ -99,20 +92,12 @@ export default function AdminStaffPage() {
     setSaving(true);
     setFormError("");
     try {
-      const secondaryApp = getApps().find((a) => a.name === "secondary") || initializeApp(firebaseConfig, "secondary");
-      const secondaryAuth = getAuth(secondaryApp);
-      const newUser = await createUserWithEmailAndPassword(secondaryAuth, form.email.trim(), form.password);
-      const newUid = newUser.user.uid;
-      await setDoc(doc(db, "users", newUid), {
-        uid: newUid,
+      await createStaffUser({
         email: form.email.trim(),
+        password: form.password,
         displayName: form.name.trim(),
-        role: "waiter",
         restaurantId,
-        createdAt: serverTimestamp(),
-        active: true,
       });
-      await secondaryAuth.signOut();
       toast.success("Staff added successfully");
       resetModal();
     } catch (createError) {
@@ -124,7 +109,7 @@ export default function AdminStaffPage() {
 
   async function handleRemove(staffUid) {
     try {
-      await updateDoc(doc(db, "users", staffUid), { active: false });
+      await disableStaffUser(staffUid);
       toast.success("Staff member deactivated");
     } catch (removeError) {
       setError(removeError.message || "Unable to deactivate staff");
@@ -146,7 +131,6 @@ export default function AdminStaffPage() {
 
   return (
     <AdminShell
-      profile={profile}
       restaurantName={restaurantName}
       activeOrders={activeOrders}
       occupiedTables={occupied}

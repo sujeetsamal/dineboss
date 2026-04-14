@@ -25,17 +25,17 @@ service cloud.firestore {
       allow update, delete: if isAdmin(rId);
     }
     match /menus/{rId}/items/{itemId} {
-      allow read: if true;
+      allow read: if isStaff(rId);
       allow write: if isAdmin(rId);
     }
     match /orders/{rId}/orders/{orderId} {
-      allow create: if true;
+      allow create: if isAuth() && isStaff(rId);
       allow read: if isStaff(rId);
       allow update: if isStaff(rId);
       allow delete: if isAdmin(rId);
     }
     match /tables/{rId}/tables/{tableId} {
-      allow read: if true;
+      allow read: if isStaff(rId);
       allow write: if isStaff(rId);
     }
   }

@@ -94,79 +94,188 @@ export default function CustomerQrPage() {
   }
 
   return (
-    <main className="mx-auto min-h-screen w-full max-w-md bg-[#FAF6EE] px-4 py-4 text-[#2E1F0A]">
-      <header>
-        <h1 className="font-display text-3xl text-[#92400E]">DineBoss</h1>
-        <p className="text-sm">Table {tableNumber || "-"}</p>
-      </header>
-      {error ? <p className="mt-2 text-sm text-red-700">{error}</p> : null}
+    <main 
+      className="min-h-screen w-full px-4 py-6"
+      style={{ 
+        background: '#0D0A06',
+        backgroundImage: 'radial-gradient(ellipse at center, rgba(245,158,11,0.08) 0%, transparent 70%)'
+      }}
+    >
+      {/* Main container */}
+      <div className="mx-auto w-full max-w-md">
+        {/* Header */}
+        <div className="mb-6 rounded-2xl p-6" style={{ background: '#161009', border: '1px solid #2E1F0A' }}>
+          <h1 className="font-display text-4xl text-gold">DineBoss</h1>
+          <p className="mt-2 text-sm text-text-secondary">Table {tableNumber || "-"}</p>
+          {error ? <p className="mt-3 text-sm text-danger">{error}</p> : null}
+        </div>
 
-      <div className="mt-3 flex gap-2 overflow-x-auto pb-1">
-        {TABS.map((tab) => (
-          <button
-            key={tab}
-            type="button"
-            className={`rounded-full border px-3 py-1 text-xs ${tab === category ? "border-[#92400E] text-[#92400E]" : "border-[#D6C3A6]"}`}
-            onClick={() => setCategory(tab)}
+        {/* Category tabs */}
+        <div className="mb-4 flex gap-2 overflow-x-auto pb-2">
+          {TABS.map((tab) => (
+            <button
+              key={tab}
+              type="button"
+              className={`whitespace-nowrap rounded-full border px-4 py-2 text-xs font-medium transition ${
+                tab === category
+                  ? 'border-gold bg-gold/10 text-gold'
+                  : 'border-border-theme text-text-secondary hover:text-text-primary'
+              }`}
+              onClick={() => setCategory(tab)}
+            >
+              {tab}
+            </button>
+          ))}
+        </div>
+
+        {/* Menu items */}
+        <div className="mb-24 space-y-3">
+          {filtered.map((item) => (
+            <MenuItem 
+              key={item.id} 
+              item={item} 
+              quantity={cart[item.id]?.quantity || 0} 
+              onAdd={add} 
+              onRemove={remove}
+            />
+          ))}
+          {!filtered.length ? (
+            <div className="card flex h-48 items-center justify-center text-center">
+              <p className="text-sm text-text-muted">No items available in this category.</p>
+            </div>
+          ) : null}
+        </div>
+
+        {/* Cart button - sticky bottom */}
+        {count > 0 ? (
+          <button 
+            type="button" 
+            onClick={() => setCartOpen(true)} 
+            className="fixed bottom-6 left-4 right-4 z-20 w-[calc(100%-2rem)] max-w-sm rounded-xl px-4 py-4 font-semibold text-text-primary transition hover:shadow-lg"
+            style={{
+              background: 'linear-gradient(135deg, #F59E0B 0%, #EA580C 100%)',
+              boxShadow: '0 8px 32px rgba(245, 158, 11, 0.3)'
+            }}
           >
-            {tab}
+            <div className="flex items-center justify-between">
+              <span className="flex items-center gap-2">
+                <ShoppingCart size={18} />
+                {count} item{count !== 1 ? 's' : ''}
+              </span>
+              <span className="text-lg font-bold">₹{total.toFixed(0)}</span>
+            </div>
           </button>
-        ))}
-      </div>
+        ) : null}
 
-      <div className="mt-3 space-y-3 pb-24">
-        {filtered.map((item) => (
-          <MenuItem key={item.id} item={item} quantity={cart[item.id]?.quantity || 0} onAdd={add} onRemove={remove} />
-        ))}
-        {!filtered.length ? <p className="text-sm text-[#7C6A4F]">No items available.</p> : null}
-      </div>
-
-      <button type="button" onClick={() => setCartOpen(true)} className="btn-gold fixed bottom-4 left-4 right-4 z-20 flex items-center justify-between">
-        <span className="flex items-center gap-2">
-          <ShoppingCart size={16} /> {count} items
-        </span>
-        <span>₹{total.toFixed(0)}</span>
-      </button>
-
-      <AnimatePresence>
-        {cartOpen ? (
+        {/* Order status card */}
+        {lastOrderId && orderStatus ? (
           <motion.div
-            initial={{ y: "100%" }}
-            animate={{ y: 0 }}
-            exit={{ y: "100%" }}
-            className="fixed inset-x-0 bottom-0 z-30 rounded-t-2xl border border-[#D6C3A6] bg-[#FFFDF7] p-4"
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="mb-6 rounded-xl border border-border-theme bg-bg-card p-4"
           >
-            <h2 className="font-display text-2xl text-[#92400E]">Your Cart</h2>
-            <div className="mt-3 space-y-2">
-              {cartItems.map((item) => (
-                <div key={item.id} className="flex items-center justify-between rounded-lg border border-[#EADDC8] px-3 py-2 text-sm">
-                  <span>
-                    {item.name} x {item.quantity}
-                  </span>
-                  <span>₹{item.price * item.quantity}</span>
-                </div>
-              ))}
-            </div>
-            <p className="mt-3 text-sm">Total: ₹{total.toFixed(0)}</p>
-            <div className="mt-3 flex gap-2">
-              <button className="btn-gold flex-1" type="button" onClick={checkout} disabled={placing || !cartItems.length}>
-                {placing ? "Placing..." : "Place Order"}
-              </button>
-              <button type="button" className="flex-1 rounded-lg border border-[#D6C3A6]" onClick={() => setCartOpen(false)}>
-                Close
-              </button>
-            </div>
+            <p className="text-center font-semibold text-gold">
+              {orderStatus === 'pending' && '✓ Order Received'}
+              {orderStatus === 'preparing' && '👨‍🍳 Kitchen is Preparing'}
+              {orderStatus === 'served' && '🍽️ Order Coming!'}
+            </p>
+            <p className="mt-2 text-center text-xs text-text-secondary">
+              {orderStatus === 'pending' && 'Your order has been placed. Chef will start soon!'}
+              {orderStatus === 'preparing' && 'Your meal is being prepared with care.'}
+              {orderStatus === 'served' && 'Your order is on its way to your table!'}
+            </p>
           </motion.div>
         ) : null}
-      </AnimatePresence>
+      </div>
 
-      {lastOrderId ? (
-        <div className="mt-4 rounded-xl border border-[#D6C3A6] bg-[#FFFDF7] p-3 text-sm">
-          <p>{orderStatus === "pending" ? "Order received ✓" : null}</p>
-          <p>{orderStatus === "preparing" ? "Kitchen is preparing your order 👨‍🍳" : null}</p>
-          <p>{orderStatus === "served" ? "Your order is on its way! 🍽️" : null}</p>
-        </div>
-      ) : null}
+      {/* Cart modal */}
+      <AnimatePresence>
+        {cartOpen ? (
+          <>
+            {/* Modal backdrop */}
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setCartOpen(false)}
+              className="fixed inset-0 z-40 bg-black/60"
+            />
+            
+            {/* Cart panel */}
+            <motion.div
+              initial={{ y: '100%' }}
+              animate={{ y: 0 }}
+              exit={{ y: '100%' }}
+              transition={{ type: 'spring', damping: 25, stiffness: 300 }}
+              className="fixed inset-x-0 bottom-0 z-50 rounded-t-3xl p-6"
+              style={{ background: '#161009', border: '1px solid #2E1F0A' }}
+            >
+              {/* Cart header */}
+              <div className="mb-4 flex items-center justify-between">
+                <h2 className="font-display text-2xl text-gold">Your Order</h2>
+                <button
+                  type="button"
+                  onClick={() => setCartOpen(false)}
+                  className="text-text-secondary hover:text-text-primary"
+                >
+                  ✕
+                </button>
+              </div>
+
+              {/* Cart items */}
+              <div className="mb-4 max-h-64 space-y-2 overflow-y-auto">
+                {cartItems.map((item) => (
+                  <div
+                    key={item.id}
+                    className="flex items-center justify-between rounded-lg border border-border-theme bg-bg-card px-3 py-2"
+                  >
+                    <div>
+                      <p className="text-sm font-medium text-text-primary">{item.name}</p>
+                      <p className="text-xs text-text-secondary">x {item.quantity}</p>
+                    </div>
+                    <p className="text-sm font-semibold text-gold">₹{(item.price * item.quantity).toFixed(0)}</p>
+                  </div>
+                ))}
+              </div>
+
+              {/* Order summary */}
+              <div className="mb-4 space-y-2 border-t border-border-theme pt-4">
+                <div className="flex items-center justify-between text-sm text-text-secondary">
+                  <span>Subtotal</span>
+                  <span>₹{total.toFixed(0)}</span>
+                </div>
+                <div className="flex items-center justify-between text-sm text-text-secondary">
+                  <span>Tax (estimated)</span>
+                  <span>₹{(total * 0.05).toFixed(0)}</span>
+                </div>
+                <div className="flex items-center justify-between border-t border-border-theme pt-2 text-base font-semibold text-gold">
+                  <span>Total</span>
+                  <span>₹{(total * 1.05).toFixed(0)}</span>
+                </div>
+              </div>
+
+              {/* Action buttons */}
+              <div className="flex gap-3">
+                <button
+                  type="button"
+                  onClick={checkout}
+                  disabled={placing || !cartItems.length}
+                  className="btn-gold flex-1 py-3 text-sm font-semibold disabled:opacity-50"
+                >
+                  {placing ? '🔄 Placing...' : '✓ Place Order'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setCartOpen(false)}
+                  className="flex-1 rounded-lg border border-border-theme py-3 text-sm font-semibold text-text-secondary transition hover:bg-gold/10 hover:text-gold"
+                >
+                  Continue Shopping
+                </button>
+              </div>
+            </motion.div>
+          </>
+        ) : null}
+      </AnimatePresence>
     </main>
   );
 }

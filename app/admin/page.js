@@ -15,7 +15,7 @@ import {
   subscribeToTables,
   updateOrderStatus,
 } from "@/lib/firestore";
-import { useCurrentUserProfile } from "@/lib/useCurrentUserProfile";
+import { useCurrentUser } from "@/hooks/useCurrentUser";
 
 function StatCard({ title, value, subtitle, valueClass = "" }) {
   return (
@@ -28,7 +28,7 @@ function StatCard({ title, value, subtitle, valueClass = "" }) {
 }
 
 export default function AdminPage() {
-  const { loading, profile, error, setError } = useCurrentUserProfile({ allowedRoles: ["admin"] });
+  const { loading, user, role, restaurantId, error, setError } = useCurrentUser({ allowedRoles: ["admin"] });
   const [restaurant, setRestaurant] = useState(null);
   const [orders, setOrders] = useState([]);
   const [tables, setTables] = useState([]);
@@ -40,9 +40,9 @@ export default function AdminPage() {
   const [showQrModal, setShowQrModal] = useState(false);
 
   useEffect(() => {
-    if (!profile?.restaurantId) return;
+    if (!restaurantId) return;
     let mounted = true;
-    getRestaurant(profile.restaurantId)
+    getRestaurant(restaurantId)
       .then((data) => {
         if (mounted) setRestaurant(data);
       })
@@ -50,19 +50,19 @@ export default function AdminPage() {
     return () => {
       mounted = false;
     };
-  }, [profile?.restaurantId, setError]);
+  }, [restaurantId, setError]);
 
   useEffect(() => {
-    if (!profile?.restaurantId) return undefined;
-    const unsubTables = subscribeToTables(profile.restaurantId, setTables, (e) => setError(e.message));
-    const unsubOrders = subscribeToOrders(profile.restaurantId, setOrders, (e) => setError(e.message));
-    const unsubMenu = subscribeToMenu(profile.restaurantId, setMenu, (e) => setError(e.message));
+    if (!restaurantId) return undefined;
+    const unsubTables = subscribeToTables(restaurantId, setTables, (e) => setError(e.message));
+    const unsubOrders = subscribeToOrders(restaurantId, setOrders, (e) => setError(e.message));
+    const unsubMenu = subscribeToMenu(restaurantId, setMenu, (e) => setError(e.message));
     return () => {
       unsubTables();
       unsubOrders();
       unsubMenu();
     };
-  }, [profile?.restaurantId, setError]);
+  }, [restaurantId, setError]);
 
   const occupiedCount = useMemo(
     () => tables.filter((table) => table.status === "occupied" || table.isOccupied).length,
@@ -99,7 +99,7 @@ export default function AdminPage() {
 
   async function handleStatusChange(orderId, status) {
     try {
-      await updateOrderStatus(profile.restaurantId, orderId, status);
+      await updateOrderStatus(restaurantId, orderId, status);
       toast.success(`Order marked ${status}`);
     } catch (statusError) {
       toast.error("Unable to update order");
@@ -110,7 +110,7 @@ export default function AdminPage() {
   async function createMenuItem(event) {
     event.preventDefault();
     try {
-      await addMenuItem(profile.restaurantId, {
+      await addMenuItem(restaurantId, {
         name: menuForm.name,
         category: menuForm.category,
         price: Number(menuForm.price),
@@ -128,7 +128,7 @@ export default function AdminPage() {
   async function createTable(event) {
     event.preventDefault();
     try {
-      await addTable(profile.restaurantId, Number(tableNumber));
+      await addTable(restaurantId, Number(tableNumber));
       setTableNumber("");
       setShowTableModal(false);
       toast.success("Table added");
@@ -150,7 +150,7 @@ export default function AdminPage() {
       </AdminShell>
     );
   }
-  if (!profile?.restaurantId) {
+  if (!restaurantId) {
     return (
       <AdminShell>
         <div className="rounded-lg bg-red-50 p-4 text-red-800">
@@ -162,7 +162,6 @@ export default function AdminPage() {
 
   return (
     <AdminShell
-      profile={profile}
       restaurantName={restaurant?.name}
       activeOrders={activeOrders}
       occupiedTables={occupiedCount}

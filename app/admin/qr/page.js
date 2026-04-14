@@ -6,7 +6,7 @@ import { QRCodeCanvas } from "qrcode.react";
 import toast from "react-hot-toast";
 import AdminShell from "@/components/AdminShell";
 import { getRestaurant, subscribeToOrders, subscribeToTables } from "@/lib/firestore";
-import { useCurrentUserProfile } from "@/lib/useCurrentUserProfile";
+import { useCurrentUser } from "@/hooks/useCurrentUser";
 
 function getDomain() {
   if (typeof window === "undefined") return "";
@@ -23,25 +23,25 @@ function downloadBlob(blob, filename) {
 }
 
 export default function AdminQrPage() {
-  const { loading, profile, error, setError } = useCurrentUserProfile({ allowedRoles: ["admin"] });
+  const { loading, user, role, restaurantId, error, setError } = useCurrentUser({ allowedRoles: ["admin"] });
   const [restaurant, setRestaurant] = useState(null);
   const [tables, setTables] = useState([]);
   const [orders, setOrders] = useState([]);
 
   useEffect(() => {
-    if (!profile?.restaurantId) return;
-    getRestaurant(profile.restaurantId).then(setRestaurant).catch((e) => setError(e.message));
-  }, [profile?.restaurantId, setError]);
+    if (!restaurantId) return;
+    getRestaurant(restaurantId).then(setRestaurant).catch((e) => setError(e.message));
+  }, [restaurantId, setError]);
 
   useEffect(() => {
-    if (!profile?.restaurantId) return undefined;
-    const unsubTables = subscribeToTables(profile.restaurantId, setTables, (e) => setError(e.message));
-    const unsubOrders = subscribeToOrders(profile.restaurantId, setOrders, (e) => setError(e.message));
+    if (!restaurantId) return undefined;
+    const unsubTables = subscribeToTables(restaurantId, setTables, (e) => setError(e.message));
+    const unsubOrders = subscribeToOrders(restaurantId, setOrders, (e) => setError(e.message));
     return () => {
       unsubTables();
       unsubOrders();
     };
-  }, [profile?.restaurantId, setError]);
+  }, [restaurantId, setError]);
 
   const activeOrders = useMemo(
     () => orders.filter((o) => o.status === "pending" || o.status === "preparing").length,
@@ -53,7 +53,7 @@ export default function AdminQrPage() {
   );
 
   function qrValue(tableNumber) {
-    return `${getDomain()}/qr/${profile.restaurantId}__${tableNumber}`;
+    return `${getDomain()}/qr/${restaurantId}__${tableNumber}`;
   }
 
   async function downloadSingle(tableNumber) {
@@ -104,7 +104,6 @@ export default function AdminQrPage() {
 
   return (
     <AdminShell
-      profile={profile}
       restaurantName={restaurant?.name}
       activeOrders={activeOrders}
       occupiedTables={occupied}

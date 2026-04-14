@@ -5,12 +5,14 @@ import { useRouter } from 'next/navigation';
 import { onAuthStateChanged } from 'firebase/auth';
 import { auth } from '@/lib/firebase';
 import { getUserProfile } from '@/lib/firestore';
+import { getDefaultPermissionsForRole } from '@/lib/permissions';
 
 export function useCurrentUser({ allowedRoles = [], redirectTo = '/login' } = {}) {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [user, setUser] = useState(null);
   const [role, setRole] = useState(null);
+  const [permissions, setPermissions] = useState({});
   const [restaurantId, setRestaurantId] = useState(null);
   const [error, setError] = useState('');
 
@@ -19,6 +21,7 @@ export function useCurrentUser({ allowedRoles = [], redirectTo = '/login' } = {}
       if (!authUser) {
         setUser(null);
         setRole(null);
+        setPermissions({});
         setRestaurantId(null);
         setLoading(false);
         router.replace(redirectTo);
@@ -34,13 +37,17 @@ export function useCurrentUser({ allowedRoles = [], redirectTo = '/login' } = {}
         }
 
         if (allowedRoles.length > 0 && !allowedRoles.includes(profile.role)) {
-          router.replace(profile.role === 'admin' ? '/admin' : '/waiter');
+          router.replace(profile.role === 'admin' || profile.role === 'owner' || profile.role === 'manager' ? '/admin' : '/waiter');
           setLoading(false);
           return;
         }
 
+        // Get permissions from user profile or use role defaults
+        const userPermissions = profile.permissions || getDefaultPermissionsForRole(profile.role);
+
         setUser(authUser);
         setRole(profile.role);
+        setPermissions(userPermissions);
         setRestaurantId(profile.restaurantId);
         setError('');
       } catch (err) {
@@ -54,5 +61,5 @@ export function useCurrentUser({ allowedRoles = [], redirectTo = '/login' } = {}
     return unsubscribe;
   }, [allowedRoles, redirectTo, router]);
 
-  return { loading, user, role, restaurantId, error, setError };
+  return { loading, user, role, permissions, restaurantId, error, setError };
 }

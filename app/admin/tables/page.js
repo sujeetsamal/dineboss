@@ -1,17 +1,15 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { collection, deleteDoc, doc, onSnapshot, orderBy, query, serverTimestamp, setDoc, updateDoc } from "firebase/firestore";
+// Firestore helpers only; no direct Firestore usage
 import { Grid3x3, Trash2 } from "lucide-react";
 import toast from "react-hot-toast";
 import AdminShell from "@/components/AdminShell";
-import { db } from "@/lib/firebase";
-import { getRestaurant, subscribeToOrders } from "@/lib/firestore";
-import { useCurrentUserProfile } from "@/lib/useCurrentUserProfile";
+import { getRestaurant, subscribeToOrders, subscribeToTables, addTable, setTableStatus, deleteTable } from "@/lib/firestore";
+import { useCurrentUser } from "@/hooks/useCurrentUser";
 
 export default function AdminTablesPage() {
-  const { loading: authLoading, profile, error, setError } = useCurrentUserProfile({ allowedRoles: ["admin"] });
-  const restaurantId = profile?.restaurantId || "";
+  const { loading: authLoading, user, role, restaurantId, error, setError } = useCurrentUser({ allowedRoles: ["admin"] });
   const [restaurantName, setRestaurantName] = useState("");
   const [orders, setOrders] = useState([]);
   const [tables, setTables] = useState([]);
@@ -40,11 +38,10 @@ export default function AdminTablesPage() {
   useEffect(() => {
     if (!restaurantId) return undefined;
     setLoadingTables(true);
-    const tablesQuery = query(collection(db, `tables/${restaurantId}/tables`), orderBy("tableNumber", "asc"));
-    const unsubscribe = onSnapshot(
-      tablesQuery,
-      (snapshot) => {
-        setTables(snapshot.docs.map((table) => ({ id: table.id, ...table.data() })));
+    const unsubscribe = subscribeToTables(
+      restaurantId,
+      (tables) => {
+        setTables(tables);
         setLoadingTables(false);
       },
       (snapshotError) => {
@@ -80,14 +77,7 @@ export default function AdminTablesPage() {
     setSaving(true);
     setFormError("");
     try {
-      const tableRef = doc(collection(db, `tables/${restaurantId}/tables`));
-      await setDoc(tableRef, {
-        tableNumber: parsed,
-        status: "available",
-        restaurantId,
-        currentOrderId: null,
-        createdAt: serverTimestamp(),
-      });
+      await addTable(restaurantId, parsed);
       setTableNumber("");
       setShowModal(false);
       toast.success("Table added");
@@ -101,10 +91,7 @@ export default function AdminTablesPage() {
   async function markAvailable(tableId) {
     if (!restaurantId) return;
     try {
-      await updateDoc(doc(db, `tables/${restaurantId}/tables/${tableId}`), {
-        status: "available",
-        currentOrderId: null,
-      });
+      await setTableStatus(restaurantId, tableId, "available", null);
       toast.success("Table marked available");
     } catch (updateError) {
       setError(updateError.message || "Unable to update table");
@@ -114,7 +101,7 @@ export default function AdminTablesPage() {
   async function handleDelete(table) {
     if (!restaurantId || table.status === "occupied") return;
     try {
-      await deleteDoc(doc(db, `tables/${restaurantId}/tables/${table.id}`));
+      await deleteTable(restaurantId, table.id);
       toast.success("Table deleted");
       setDeleteId("");
     } catch (deleteError) {
@@ -137,7 +124,6 @@ export default function AdminTablesPage() {
 
   return (
     <AdminShell
-      profile={profile}
       restaurantName={restaurantName}
       activeOrders={activeOrders}
       occupiedTables={occupiedCount}

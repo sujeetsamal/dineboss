@@ -17,32 +17,32 @@ import {
 } from "recharts";
 import AdminShell from "@/components/AdminShell";
 import { getRestaurant, subscribeToOrders, subscribeToTables } from "@/lib/firestore";
-import { useCurrentUserProfile } from "@/lib/useCurrentUserProfile";
+import { useCurrentUser } from "@/hooks/useCurrentUser";
 
 function sameDay(a, b) {
   return a.getDate() === b.getDate() && a.getMonth() === b.getMonth() && a.getFullYear() === b.getFullYear();
 }
 
 export default function AdminAnalyticsPage() {
-  const { loading, profile, error, setError } = useCurrentUserProfile({ allowedRoles: ["admin"] });
+  const { loading, user, role, restaurantId, error, setError } = useCurrentUser({ allowedRoles: ["admin"] });
   const [restaurant, setRestaurant] = useState(null);
   const [orders, setOrders] = useState([]);
   const [tables, setTables] = useState([]);
 
   useEffect(() => {
-    if (!profile?.restaurantId) return;
-    getRestaurant(profile.restaurantId).then(setRestaurant).catch((e) => setError(e.message));
-  }, [profile?.restaurantId, setError]);
+    if (!restaurantId) return;
+    getRestaurant(restaurantId).then(setRestaurant).catch((e) => setError(e.message));
+  }, [restaurantId, setError]);
 
   useEffect(() => {
-    if (!profile?.restaurantId) return undefined;
-    const unsubOrders = subscribeToOrders(profile.restaurantId, setOrders, (e) => setError(e.message));
-    const unsubTables = subscribeToTables(profile.restaurantId, setTables, (e) => setError(e.message));
+    if (!restaurantId) return undefined;
+    const unsubOrders = subscribeToOrders(restaurantId, setOrders, (e) => setError(e.message));
+    const unsubTables = subscribeToTables(restaurantId, setTables, (e) => setError(e.message));
     return () => {
       unsubOrders();
       unsubTables();
     };
-  }, [profile?.restaurantId, setError]);
+  }, [restaurantId, setError]);
 
   const now = new Date();
   const weekAgo = new Date(now);
@@ -145,7 +145,6 @@ export default function AdminAnalyticsPage() {
 
   return (
     <AdminShell
-      profile={profile}
       restaurantName={restaurant?.name}
       activeOrders={activeOrders}
       occupiedTables={occupied}

@@ -7,12 +7,12 @@ import toast from "react-hot-toast";
 import MenuItem from "@/components/MenuItem";
 import TableCard from "@/components/TableCard";
 import { placeOrder, subscribeToMenu, subscribeToTables } from "@/lib/firestore";
-import { useCurrentUserProfile } from "@/lib/useCurrentUserProfile";
+import { useCurrentUser } from "@/hooks/useCurrentUser";
 
 const CATEGORY_TABS = ["All", "Veg", "Non-Veg", "Drinks"];
 
 export default function WaiterPage() {
-  const { loading, profile, firebaseUser, error, setError } = useCurrentUserProfile({ allowedRoles: ["waiter"] });
+  const { loading, user, role, restaurantId, error, setError } = useCurrentUser({ allowedRoles: ["waiter"] });
   const [step, setStep] = useState(1);
   const [tables, setTables] = useState([]);
   const [menu, setMenu] = useState([]);
@@ -23,14 +23,14 @@ export default function WaiterPage() {
   const [placing, setPlacing] = useState(false);
 
   useEffect(() => {
-    if (!profile?.restaurantId) return undefined;
-    const unsubTables = subscribeToTables(profile.restaurantId, setTables, (e) => setError(e.message));
-    const unsubMenu = subscribeToMenu(profile.restaurantId, setMenu, (e) => setError(e.message));
+    if (!restaurantId) return undefined;
+    const unsubTables = subscribeToTables(restaurantId, setTables, (e) => setError(e.message));
+    const unsubMenu = subscribeToMenu(restaurantId, setMenu, (e) => setError(e.message));
     return () => {
       unsubTables();
       unsubMenu();
     };
-  }, [profile?.restaurantId, setError]);
+  }, [restaurantId, setError]);
 
   const filteredMenu = useMemo(() => {
     if (category === "All") return menu;
@@ -63,17 +63,17 @@ export default function WaiterPage() {
   }
 
   async function submitOrder() {
-    if (!selectedTable || !profile?.restaurantId) return;
+    if (!selectedTable || !restaurantId) return;
     if (!cartItems.length) return;
     setPlacing(true);
     setError("");
     try {
-      await placeOrder(profile.restaurantId, {
+      await placeOrder(restaurantId, {
         tableId: selectedTable.id,
         tableNumber: selectedTable.tableNumber,
         items: cartItems,
         total,
-        createdBy: firebaseUser.uid,
+        createdBy: user?.uid,
       });
       toast.success("Order placed successfully");
       setCart({});
@@ -98,7 +98,7 @@ export default function WaiterPage() {
       </main>
     );
   }
-  if (!profile?.restaurantId) {
+  if (!restaurantId) {
     return (
       <main className="mx-auto min-h-screen w-full max-w-md flex items-center justify-center px-4 py-4">
         <div className="rounded-lg bg-red-50 p-4 text-red-800 text-sm">
@@ -112,7 +112,7 @@ export default function WaiterPage() {
     <main className="mx-auto min-h-screen w-full max-w-md px-4 py-4">
       <header className="mb-4">
         <h1 className="font-display text-3xl text-gold">DineBoss</h1>
-        <p className="text-sm text-text-secondary">Waiter: {profile.displayName || profile.email}</p>
+        <p className="text-sm text-text-secondary">Waiter: {user?.displayName || user?.email}</p>
       </header>
       {error ? <p className="mb-3 text-sm text-danger">{error}</p> : null}
 
