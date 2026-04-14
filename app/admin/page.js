@@ -138,8 +138,27 @@ export default function AdminPage() {
     }
   }
 
-  if (loading) return <p className="p-6 text-sm text-text-secondary">Loading dashboard...</p>;
-  if (!profile?.restaurantId) return <p className="p-6 text-sm text-danger">Restaurant not assigned.</p>;
+  if (loading) {
+    return (
+      <AdminShell>
+        <div className="flex h-96 items-center justify-center">
+          <div className="text-center">
+            <div className="mb-2 inline-block h-8 w-8 animate-spin rounded-full border-4 border-gold border-t-transparent" />
+            <p className="text-sm text-text-muted">Loading dashboard...</p>
+          </div>
+        </div>
+      </AdminShell>
+    );
+  }
+  if (!profile?.restaurantId) {
+    return (
+      <AdminShell>
+        <div className="rounded-lg bg-red-50 p-4 text-red-800">
+          <p className="text-sm">Restaurant not assigned.</p>
+        </div>
+      </AdminShell>
+    );
+  }
 
   return (
     <AdminShell

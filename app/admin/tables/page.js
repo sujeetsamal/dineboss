@@ -122,6 +122,19 @@ export default function AdminTablesPage() {
     }
   }
 
+  if (authLoading) {
+    return (
+      <AdminShell>
+        <div className="flex h-96 items-center justify-center">
+          <div className="text-center">
+            <div className="mb-2 inline-block h-8 w-8 animate-spin rounded-full border-4 border-gold border-t-transparent" />
+            <p className="text-sm text-text-muted">Loading tables...</p>
+          </div>
+        </div>
+      </AdminShell>
+    );
+  }
+
   return (
     <AdminShell
       profile={profile}

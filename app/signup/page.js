@@ -45,7 +45,7 @@ export default function SignupPage() {
         createdAt: serverTimestamp()
       });
       toast.success('Restaurant created! Welcome to DineBoss.');
-      router.push('/admin');
+      router.replace('/admin');
     } catch (err) {
       setError(err.message || 'Signup failed. Please try again.');
       setLoading(false);

@@ -30,7 +30,7 @@ export default function LoginPage() {
       }
       const role = snap.data().role;
       toast.success('Welcome back!');
-      router.push(role === 'admin' ? '/admin' : '/waiter');
+      router.replace(role === 'admin' ? '/admin' : '/waiter');
     } catch {
       setError('Invalid email or password. Please try again.');
       setLoading(false);

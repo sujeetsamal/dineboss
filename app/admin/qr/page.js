@@ -89,7 +89,18 @@ export default function AdminQrPage() {
     window.print();
   }
 
-  if (loading) return <p className="p-6 text-sm text-text-secondary">Loading QR center...</p>;
+  if (loading) {
+    return (
+      <AdminShell>
+        <div className="flex h-96 items-center justify-center">
+          <div className="text-center">
+            <div className="mb-2 inline-block h-8 w-8 animate-spin rounded-full border-4 border-gold border-t-transparent" />
+            <p className="text-sm text-text-muted">Loading QR center...</p>
+          </div>
+        </div>
+      </AdminShell>
+    );
+  }
 
   return (
     <AdminShell

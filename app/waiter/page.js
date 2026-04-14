@@ -88,8 +88,25 @@ export default function WaiterPage() {
     }
   }
 
-  if (loading) return <p className="p-6 text-sm text-text-secondary">Loading waiter app...</p>;
-  if (!profile?.restaurantId) return <p className="p-6 text-sm text-danger">Restaurant not assigned.</p>;
+  if (loading) {
+    return (
+      <main className="mx-auto min-h-screen w-full max-w-md flex items-center justify-center px-4 py-4">
+        <div className="text-center">
+          <div className="mb-2 inline-block h-8 w-8 animate-spin rounded-full border-4 border-gold border-t-transparent" />
+          <p className="text-sm text-text-muted">Loading waiter app...</p>
+        </div>
+      </main>
+    );
+  }
+  if (!profile?.restaurantId) {
+    return (
+      <main className="mx-auto min-h-screen w-full max-w-md flex items-center justify-center px-4 py-4">
+        <div className="rounded-lg bg-red-50 p-4 text-red-800 text-sm">
+          <p>Restaurant not assigned.</p>
+        </div>
+      </main>
+    );
+  }
 
   return (
     <main className="mx-auto min-h-screen w-full max-w-md px-4 py-4">
