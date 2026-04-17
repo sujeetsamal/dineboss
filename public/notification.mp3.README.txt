@@ -1,0 +1,6 @@
+// Placeholder notification sound
+// Add actual audio file at /public/notification.mp3
+// You can use services like:
+// - Free sound: https://freesound.org/
+// - Notification: https://www.soundly.com/
+// Or generate using: https://www.zedge.net/

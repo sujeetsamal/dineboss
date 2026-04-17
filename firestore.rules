@@ -1,0 +1,135 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // ============ HELPER FUNCTIONS ============
+    function isAuth() {
+      return request.auth != null;
+    }
+    
+    // ✅ FIXED: isValidUser() now only checks auth, not document existence
+    // This allows operations during signup before user doc is created
+    function isValidUser() {
+      return isAuth();
+    }
+    
+    // ✅ NEW: Strict validation - checks if user document AND data is valid
+    // Use this for operations that truly need existing user data
+    function hasUserDocument() {
+      return isAuth() && 
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data != null;
+    }
+    
+    function getUserData() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+    
+    // ✅ FIXED: Admin check - works even if user document just created
+    function isAdmin(rId) {
+      return hasUserDocument() && 
+             getUserData().restaurantId == rId && 
+             getUserData().role == 'admin';
+    }
+    
+    // ✅ FIXED: Staff check - works even if user document just created
+    function isStaff(rId) {
+      return hasUserDocument() && 
+             getUserData().restaurantId == rId;
+    }
+    
+    // ✅ NEW: Check if user owns a resource
+    function isOwner(userId) {
+      return isAuth() && request.auth.uid == userId;
+    }
+
+    // ============ PUBLIC COLLECTIONS (NO AUTH REQUIRED) ============
+    
+    // *** RESTAURANTS COLLECTION: PUBLIC READ (for all domain types) ***
+    // Anyone can read: restaurant info, menu, categories, items
+    // This MUST support QR scanning and customer menu browsing
+    match /restaurants/{restaurantId} {
+      allow read: if true;  // ✅ PUBLIC: Anyone can view restaurant
+      allow create: if isAuth();  // ✅ FIXED: Authenticated can create (doesn't need user doc)
+      allow update, delete: if isAdmin(restaurantId);  // Only admin can modify
+      
+      // *** NESTED: MENU ITEMS (PUBLIC READ) ***
+      // QR codes need this - customers scan and see menu without login
+      match /menu/{menuItemId} {
+        allow read: if true;  // ✅ PUBLIC: Anyone can view menu items
+        allow create, update, delete: if isAdmin(restaurantId);  // Admin only
+      }
+      
+      // *** NESTED: CATEGORIES (PUBLIC READ) ***
+      match /categories/{categoryId} {
+        allow read: if true;  // ✅ PUBLIC: Anyone can view categories
+        allow create, update, delete: if isAdmin(restaurantId);  // Admin only
+      }
+      
+      // *** NESTED: BILLING (STAFF ONLY) ***
+      match /bills/{billId} {
+        allow read, write: if isStaff(restaurantId);
+      }
+    }
+
+    // *** ORDERS: PUBLIC CREATE (customers place orders), STAFF READ/UPDATE ***
+    // Structure: /orders/{restaurantId}/orders/{orderId}
+    match /orders/{restaurantId} {
+      match /orders/{orderId} {
+        allow create: if true;  // ✅ PUBLIC: Anyone can create orders (no auth needed)
+        allow read: if isStaff(restaurantId);  // Staff: view orders
+        allow update, delete: if isStaff(restaurantId);  // Staff: modify orders
+      }
+    }
+
+    // ============ AUTHENTICATED COLLECTIONS ============
+    
+    // *** USERS: AUTHENTICATED ONLY ***
+    match /users/{userId} {
+      // ✅ FIXED: Allow user to create their OWN document OR admin can create for staff
+      allow create: if isOwner(userId) || 
+                       (isAdmin(request.resource.data.restaurantId));
+      
+      // ✅ FIXED: Read access - user can read own doc, staff can read restaurant users
+      allow read: if isOwner(userId) || 
+                     (hasUserDocument() && 
+                      getUserData().restaurantId == resource.data.restaurantId);
+      
+      // ✅ FIXED: Update - user can update own doc OR admin can update restaurant users
+      allow update: if isOwner(userId) || 
+                       isAdmin(resource.data.restaurantId);
+      
+      // Only admin can delete users
+      allow delete: if isAdmin(resource.data.restaurantId);
+    }
+
+    // *** TABLES: STAFF ONLY ***
+    match /tables/{restaurantId} {
+      match /tables/{tableId} {
+        allow read, write: if isStaff(restaurantId);
+      }
+    }
+
+    // *** CUSTOMER CARTS: PUBLIC CREATE, CUSTOMER READ/UPDATE ***
+    // Structure: /carts/{cartId} (can be anonymous during checkout)
+    // ✅ NEW: Support cart operations during menu checkout flow
+    match /carts/{cartId} {
+      allow create: if true;  // Public: anyone during checkout
+      allow read: if isAuth();  // Authenticated users can read their cart
+      allow update: if isAuth();  // Users can update their cart items
+      allow delete: if isAuth();  // Users can clear cart
+    }
+
+    // *** SESSIONS/TEMP DATA: PUBLIC ***
+    // For handling temporary user sessions during signup
+    match /sessions/{sessionId} {
+      allow create: if true;  // Public: create session for signup
+      allow read, update: if true;  // Accessible during signup flow
+      allow delete: if true;
+    }
+
+    // *** DEFAULT DENY: Block everything else (REQUIRED for security) ***
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
