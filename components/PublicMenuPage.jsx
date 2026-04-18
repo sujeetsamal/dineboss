@@ -5,6 +5,7 @@ import { collection, getDocs, query, where, orderBy } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { ShoppingCart, Clock, Phone, MapPin } from 'lucide-react';
 import MenuItem from './MenuItem';
+import SearchBar from '@/components/SearchBar';
 import toast from 'react-hot-toast';
 import { subscribeToRestaurant } from '@/lib/firestore';
 
@@ -13,6 +14,7 @@ const CATEGORY_TABS = [
   { label: 'Veg', value: 'veg' },
   { label: 'Non-Veg', value: 'non-veg' },
   { label: 'Drinks', value: 'drinks' },
+  { label: 'Dessert', value: 'dessert' },
 ];
 
 /**
@@ -27,6 +29,7 @@ export default function PublicMenuPage({ restaurantId, restaurant, slug }) {
   const [selectedItems, setSelectedItems] = useState([]);
   const [restaurantInfo, setRestaurantInfo] = useState(restaurant);
   const [queryError, setQueryError] = useState(null);
+  const [menuSearch, setMenuSearch] = useState("");
 
   useEffect(() => {
     fetchMenuItems();
@@ -149,10 +152,17 @@ export default function PublicMenuPage({ restaurantId, restaurant, slug }) {
   }
 
   const filteredMenuItems = useMemo(() => {
-    return selectedCategory === 'all'
-      ? menuItems
-      : menuItems.filter((item) => item.category === selectedCategory);
-  }, [menuItems, selectedCategory]);
+    let items = selectedCategory === 'all' ? menuItems : menuItems.filter((item) => item.category === selectedCategory);
+    if (menuSearch) {
+      const q = menuSearch.toLowerCase();
+      items = items.filter((item) =>
+        String(item.name || '').toLowerCase().includes(q) ||
+        String(item.category || '').toLowerCase().includes(q) ||
+        String(item.description || '').toLowerCase().includes(q)
+      );
+    }
+    return items;
+  }, [menuItems, selectedCategory, menuSearch]);
 
   const cartTotal = useMemo(
     () => selectedItems.reduce((sum, item) => sum + item.price * item.quantity, 0),
@@ -224,6 +234,9 @@ export default function PublicMenuPage({ restaurantId, restaurant, slug }) {
 
       {/* Main Content */}
       <main className="max-w-6xl mx-auto px-4 py-8">
+        <div className="mb-4">
+          <SearchBar placeholder="Search menu" onSearch={setMenuSearch} />
+        </div>
         {loading ? (
           <div className="flex items-center justify-center h-96">
             <div className="text-center">

@@ -13,6 +13,8 @@ const TABS = [
   { label: "Veg", value: "veg" },
   { label: "Non-Veg", value: "non-veg" },
   { label: "Drinks", value: "drinks" },
+  { label: "Dessert", value: "dessert" },
+
 ];
 
 export default function CustomerQrPage() {
@@ -25,6 +27,7 @@ export default function CustomerQrPage() {
   // State management
   const [menu, setMenu] = useState([]);
   const [category, setCategory] = useState("all");
+  const [searchQuery, setSearchQuery] = useState("");
   const [cart, setCart] = useState([]);
   const [cartOpen, setCartOpen] = useState(false);
   const [placing, setPlacing] = useState(false);
@@ -65,14 +68,19 @@ export default function CustomerQrPage() {
     };
   }, [restaurantId]);
 
-  // Filter menu by category
+  // Filter menu by category and search query
   const filtered = useMemo(() => {
     const items = menu.map((item) => ({
       ...item,
       category: String(item.category || "").trim().toLowerCase(),
     }));
-    return category === "all" ? items : items.filter((item) => item.category === category);
-  }, [category, menu]);
+    let result = category === "all" ? items : items.filter((item) => item.category === category);
+    if (searchQuery) {
+      const q = searchQuery.toLowerCase();
+      result = result.filter((item) => (item.name || "").toLowerCase().includes(q));
+    }
+    return result;
+  }, [category, menu, searchQuery]);
 
   // Cart derived values
   const cartItems = useMemo(() => cart, [cart]);
@@ -302,6 +310,17 @@ export default function CustomerQrPage() {
           <p className="mt-2 text-sm text-text-secondary">Table {tableNumber}</p>
           <p className="mt-1 text-xs text-text-muted">Powered by DineBoss</p>
           {error ? <p className="mt-3 text-sm text-danger">⚠️ {error}</p> : null}
+        </div>
+
+        {/* Search bar */}
+        <div className="mb-4">
+          <input
+            type="text"
+            placeholder="Search menu items..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="w-full rounded-lg border border-border-theme px-4 py-2 text-sm bg-bg-card text-text-primary placeholder-text-muted focus:outline-none focus:border-gold transition"
+          />
         </div>
 
         {/* Category tabs */}

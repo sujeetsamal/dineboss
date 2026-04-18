@@ -22,7 +22,7 @@ export default function MenuItem({
       <div className="flex items-start justify-between gap-3">
         <div className="flex-1">
           <h3 className="text-base font-semibold">{item.name}</h3>
-          <p className="mt-1 text-xs text-text-secondary">{item.category}</p>
+          <p className="mt-1 text-xs text-text-secondary">{item.category ? item.category.charAt(0).toUpperCase() + item.category.slice(1) : ''}</p>
           {item.description && <p className="mt-1 text-xs text-text-muted line-clamp-2">{item.description}</p>}
         </div>
         <p className="text-sm font-bold text-gold whitespace-nowrap">₹{Number(item.price || 0).toFixed(0)}</p>

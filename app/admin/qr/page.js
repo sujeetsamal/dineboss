@@ -1,11 +1,12 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import SearchBar from "@/components/SearchBar";
 import JSZip from "jszip";
 import { QRCodeCanvas } from "qrcode.react";
 import toast from "react-hot-toast";
 import AdminShell from "@/components/AdminShell";
-import { getRestaurant, subscribeToOrders, subscribeToTables } from "@/lib/firestore";
+import { getRestaurant, subscribeToOrders, subscribeToTables, subscribeToMenu } from "@/lib/firestore";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 
 function getDomain() {
@@ -26,7 +27,10 @@ export default function AdminQrPage() {
   const { loading, user, role, restaurantId, error, setError } = useCurrentUser({ allowedRoles: ["admin"] });
   const [restaurant, setRestaurant] = useState(null);
   const [tables, setTables] = useState([]);
+  const [qrSearch, setQrSearch] = useState("");
   const [orders, setOrders] = useState([]);
+  const [menuItems, setMenuItems] = useState([]);
+  const [menuSearch, setMenuSearch] = useState("");
 
   useEffect(() => {
     if (!restaurantId) return;
@@ -89,6 +93,38 @@ export default function AdminQrPage() {
     window.print();
   }
 
+  // Compute filteredTables without using extra hooks to avoid hook-order issues
+  const filteredTables = (() => {
+    if (!restaurantId) return tables;
+    if (!qrSearch) return tables;
+    const q = String(qrSearch).toLowerCase();
+    return tables.filter((t) => String(t.tableNumber).toLowerCase().includes(q));
+  })();
+
+  // Dessert menu section (desserts) with search
+  useEffect(() => {
+    if (!restaurantId) return undefined;
+    const unsub = subscribeToMenu(
+      restaurantId,
+      (items) => setMenuItems(items),
+      (err) => {
+        // Keep existing error handling through setError
+        setError(err?.message || 'Unable to load menu');
+      }
+    );
+    return unsub;
+  }, [restaurantId, setError]);
+
+  const desserts = useMemo(() => {
+    return menuItems.filter((m) => String((m.category || '').toLowerCase()) === 'dessert');
+  }, [menuItems]);
+  const dessertsFiltered = useMemo(() => {
+    if (!desserts.length) return desserts;
+    if (!menuSearch) return desserts;
+    const q = menuSearch.toLowerCase();
+    return desserts.filter((d) => (d.name || '').toLowerCase().includes(q));
+  }, [desserts, menuSearch]);
+
   if (loading) {
     return (
       <AdminShell>
@@ -102,6 +138,8 @@ export default function AdminQrPage() {
     );
   }
 
+  // (duplicate hook removed) ensure single source of truth for filteredTables
+
   return (
     <AdminShell
       restaurantName={restaurant?.name}
@@ -109,7 +147,11 @@ export default function AdminQrPage() {
       occupiedTables={occupied}
       totalTables={tables.length}
     >
-      <div className="mb-4 flex flex-wrap gap-2">
+      <div className="mb-4 flex items-center justify-between gap-2 w-full">
+        <div className="flex-1"></div>
+        <SearchBar placeholder="Search tables" onSearch={setQrSearch} />
+      </div>
+      <div className="mb-4 flex gap-2">
         <button className="btn-gold" type="button" onClick={downloadAllZip}>
           Download All as ZIP
         </button>
@@ -120,7 +162,7 @@ export default function AdminQrPage() {
       {error ? <p className="mb-3 text-sm text-danger">{error}</p> : null}
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        {tables.map((table) => (
+        {filteredTables.map((table) => (
           <div key={table.id} className="card text-center">
             <p className="mb-2 font-semibold">Table {table.tableNumber}</p>
             <QRCodeCanvas id={`qr-${table.tableNumber}`} value={qrValue(table.tableNumber)} size={180} includeMargin />
@@ -132,6 +174,26 @@ export default function AdminQrPage() {
         ))}
       </div>
       {!tables.length ? <p className="text-sm text-text-muted">No tables found for QR generation.</p> : null}
+
+      {/* Dessert Menu Section in QR Page */}
+      <div className="card p-4 mt-6">
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="font-display text-2xl">Desserts</h3>
+          <SearchBar placeholder="Search desserts" onSearch={(q)=>setMenuSearch(q)} />
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {dessertsFiltered.map((d) => (
+            <div key={d.id} className="card p-3">
+              <div className="font-semibold mb-1">{d.name}</div>
+              {d.description && <div className="text-xs text-text-secondary mb-1" style={{ minHeight: '1.2em' }}>{d.description}</div>}
+              <div className="mt-1 font-semibold text-gold">₹{Number(d.price || 0).toFixed(0)}</div>
+            </div>
+          ))}
+        </div>
+        {dessertsFiltered.length === 0 ? (
+          <div className="text-sm text-text-muted mt-2">No desserts match your search.</div>
+        ) : null}
+      </div>
     </AdminShell>
   );
 }

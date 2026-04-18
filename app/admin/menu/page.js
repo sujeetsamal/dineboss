@@ -284,7 +284,7 @@ export default function AdminMenuPage() {
                     </div>
                   )}
                 </div>
-                <span className={`${categoryBadge(item.category)} absolute right-4 top-4`}>{item.category || "drinks"}</span>
+                <span className={`${categoryBadge(item.category)} absolute right-4 top-4`}>{item.category ? item.category.charAt(0).toUpperCase() + item.category.slice(1) : "Drinks"}</span>
                 <h4 className="pr-20 text-[18px] font-semibold text-text-primary">{item.name}</h4>
                 {item.description ? (
                   <p

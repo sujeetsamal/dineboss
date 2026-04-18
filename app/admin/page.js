@@ -7,6 +7,9 @@ import toast from "react-hot-toast";
 import AdminShell from "@/components/AdminShell";
 import OrderPanel from "@/components/OrderPanel";
 import BillModal from "@/components/BillModal";
+import { adminSearchStore } from "./searchStore";
+import { useAdminGlobalSearch } from "./hooks/useAdminGlobalSearch";
+import SearchBar from "@/components/SearchBar";
 import {
   addMenuItem,
   addTable,
@@ -15,6 +18,7 @@ import {
   subscribeToRestaurant,
   subscribeToTables,
   updateOrderStatus,
+  updateOrderBillDetails
 } from "@/lib/firestore";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { getOrdersToday, getRevenueToday } from "@/lib/dateUtils";
@@ -42,6 +46,25 @@ export default function AdminPage() {
   const [showQrModal, setShowQrModal] = useState(false);
   const [billModalOpen, setBillModalOpen] = useState(false);
   const [selectedOrder, setSelectedOrder] = useState(null);
+  // Global admin search state (mode + query)
+  const globalSearch = useAdminGlobalSearch();
+  const currentMode = globalSearch?.mode ?? 'Orders';
+  const currentQuery = globalSearch?.query ?? '';
+  const [showAdminSearch, setShowAdminSearch] = useState(false);
+  const [adminSearchQuery, setAdminSearchQuery] = useState("");
+  // Removed UI blocks related to export bills (Fix 1)
+  
+  // Filtered orders for search (client-side)
+  const filteredOrders = useMemo(() => {
+    if (!adminSearchQuery) return orders;
+    const q = adminSearchQuery.toLowerCase();
+    return orders.filter((o) => {
+      const id = String(o.id || "");
+      const table = String(o.tableNumber ?? "");
+      const items = (o.items || []).map((it) => String(it.name || "")).join(" ");
+      return id.includes(q) || table.includes(q) || items.toLowerCase().includes(q);
+    });
+  }, [orders, adminSearchQuery]);
 
   useEffect(() => {
     if (!restaurantId) return;
@@ -90,6 +113,8 @@ export default function AdminPage() {
       .sort((a, b) => Number(b.changedAt || 0) - Number(a.changedAt || 0))
       .slice(0, 10);
   }, [ordersToday]);
+
+  // Dessert panel removed from Admin Dashboard (Fix 1)
 
   async function handleStatusChange(orderId, status) {
     try {
@@ -149,6 +174,8 @@ export default function AdminPage() {
       </AdminShell>
     );
   }
+
+  // Desserts panel on OR page (Orders page) moved to top-level; see later blocks for use
   if (!restaurantId) {
     return (
       <AdminShell>
@@ -159,6 +186,16 @@ export default function AdminPage() {
     );
   }
 
+  function toDateSafe(v) {
+    if (!v) return null
+    if (typeof v.toDate === 'function') return v.toDate()
+    if (v instanceof Date) return v
+    const d = new Date(v)
+    return isNaN(d) ? null : d
+  }
+
+  
+
   return (
     <AdminShell
       restaurantName={restaurant?.name}
@@ -167,6 +204,26 @@ export default function AdminPage() {
       totalTables={tables.length}
     >
       {error ? <p className="mb-3 text-sm text-danger">{error}</p> : null}
+
+      <div className="mb-5 flex items-center justify-between gap-3">
+        <h3 className="font-display text-3xl">Admin Dashboard</h3>
+        <button
+          type="button"
+          className="btn-gold px-4 py-2 text-sm"
+          onClick={() => setShowAdminSearch((s) => !s)}
+        >
+          {showAdminSearch ? "Hide Search" : "Search"}
+        </button>
+      </div>
+      {showAdminSearch ? (
+        <div className="mb-4">
+          <SearchBar placeholder="Search by Order ID, Table or Item" onSearch={setAdminSearchQuery} />
+        </div>
+      ) : null}
+
+      {/* Desserts panel removed per Fix 1 */}
+
+     
 
       <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <StatCard title="Today's Revenue" value={`₹${revenueToday.toFixed(0)}`} subtitle="vs yesterday +8.5%" valueClass="text-success" />
@@ -179,8 +236,8 @@ export default function AdminPage() {
         <div className="card p-4">
           <h3 className="mb-4 font-display text-2xl">Live Orders</h3>
           <div className="space-y-3">
-            {orders.filter((item) => item.status !== "completed").length ? (
-              orders
+            {filteredOrders.filter((item) => item.status !== "completed").length ? (
+              filteredOrders
                 .filter((item) => item.status !== "completed")
                 .map((order) => (
                   <motion.div key={order.id} initial={{ x: -8, opacity: 0 }} animate={{ x: 0, opacity: 1 }}>
@@ -201,6 +258,7 @@ export default function AdminPage() {
           </div>
         </div>
 
+      {/* Desserts panel removed per Fix 1 */}
         <div className="space-y-4">
           <div className="card p-4">
             <h3 className="mb-3 font-display text-2xl">Quick Actions</h3>

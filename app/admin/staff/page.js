@@ -7,6 +7,8 @@ import { createUserWithEmailAndPassword, getAuth } from "firebase/auth";
 import { Users } from "lucide-react";
 import toast from "react-hot-toast";
 import AdminShell from "@/components/AdminShell";
+import SearchBar from "@/components/SearchBar";
+import { useAdminGlobalSearch } from "../hooks/useAdminGlobalSearch";
 import { getRestaurant, subscribeToOrders, subscribeToTables, subscribeToStaff, disableStaffUser, createStaffUser } from "@/lib/firestore";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 
@@ -32,6 +34,8 @@ export default function AdminStaffPage() {
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState("");
   const [form, setForm] = useState({ name: "", email: "", password: "" });
+  const [staffSearch, setStaffSearch] = useState("");
+  const globalSearch = useAdminGlobalSearch();
 
   useEffect(() => {
     if (!restaurantId) return;
@@ -75,6 +79,26 @@ export default function AdminStaffPage() {
     () => orders.filter((item) => item.status === "pending" || item.status === "preparing").length,
     [orders]
   );
+  const filteredStaff = useMemo(() => {
+    if (!staffSearch) return staff;
+    const q = staffSearch.toLowerCase();
+    return staff.filter((s) => {
+      const text = `${s.displayName || s.email || ''}`.toLowerCase();
+      return text.includes(q);
+    });
+  }, [staff, staffSearch]);
+
+  // If global search mode is STAFF, apply global query over the already-filtered-by-name staff
+  const staffWithGlobal = useMemo(() => {
+    if (globalSearch?.mode === 'Staff' && globalSearch?.query) {
+      const q = globalSearch.query.toLowerCase();
+      return filteredStaff.filter((s) => {
+        const text = `${s.displayName || s.email || ''}`.toLowerCase();
+        return text.includes(q);
+      });
+    }
+    return filteredStaff;
+  }, [globalSearch, filteredStaff]);
   const occupied = useMemo(
     () => tables.filter((table) => table.status === "occupied" || table.isOccupied).length,
     [tables]
@@ -142,6 +166,9 @@ export default function AdminStaffPage() {
           Add Staff
         </button>
       </div>
+      <div className="mb-4 flex justify-end">
+        <SearchBar placeholder="Search staff" onSearch={setStaffSearch} />
+      </div>
 
       {error ? <p className="mb-3 text-sm text-danger">{error}</p> : null}
 
@@ -165,9 +192,9 @@ export default function AdminStaffPage() {
         </div>
       ) : null}
 
-      {!authLoading && !loadingStaff && staff.length > 0 ? (
+      {!authLoading && !loadingStaff && staffWithGlobal.length > 0 ? (
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-          {staff.map((member) => (
+          {staffWithGlobal.map((member) => (
             <div key={member.id} className="card p-5">
               <div className="mb-4 flex items-start justify-between">
                 <div className="flex items-center gap-3">
