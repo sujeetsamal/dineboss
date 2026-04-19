@@ -1,6 +1,8 @@
 'use client';
 
+import Link from 'next/link';
 import { useEffect, useMemo, useState, useRef } from 'react';
+import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import toast from 'react-hot-toast';
 import { subscribeToOrders, subscribeToRestaurant, updateOrderStatus } from '@/lib/firestore';
@@ -24,8 +26,8 @@ function KitchenCard({ order, onAction, isNew }) {
       <p className="text-sm text-text-muted">#{String(order.index || 0).padStart(3, '0')}</p>
       <p className="mt-1 text-2xl font-bold">Table {order.tableNumber}</p>
       <ul className="mt-2 space-y-1 text-base">
-        {order.items?.map((item) => (
-          <li key={`${item.id || item.name}-${item.quantity}`}>
+        {order.items?.map((item, idx) => (
+          <li key={`${order.id}-${idx}-${item.name}`}>
             {item.quantity}x {item.name}
           </li>
         ))}
@@ -45,6 +47,7 @@ function KitchenCard({ order, onAction, isNew }) {
 }
 
 export default function KitchenPage() {
+  const router = useRouter()
   const { loading, restaurantId, error: userError } = useCurrentUser({ redirectTo: '/login' });
   const [orders, setOrders] = useState([]);
   const [error, setError] = useState('');
@@ -160,10 +163,29 @@ export default function KitchenPage() {
 
   return (
     <main className="min-h-screen bg-bg-primary p-4 text-text-primary md:p-6">
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="font-display text-4xl text-gold">
-          {restaurantName ? `${restaurantName} Kitchen` : 'Kitchen Screen'}
-        </h1>
+      <div className="mb-6">
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            {/* Breadcrumb */}
+            <div className="flex items-center gap-2 text-sm text-gray-400 mb-3">
+              <Link href="/admin" className="hover:text-amber-400 transition-colors">
+                Dashboard
+              </Link>
+              <span className="text-gray-600">›</span>
+              <span className="text-white font-medium">Kitchen Screen</span>
+            </div>
+            <h1 className="font-display text-4xl text-gold">
+              {restaurantName ? `${restaurantName} Kitchen` : 'Kitchen Screen'}
+            </h1>
+          </div>
+          <button
+            onClick={() => router.push('/admin')}
+            className="w-8 h-8 rounded-full bg-gray-700 hover:bg-gray-600 text-gray-300 hover:text-white flex items-center justify-center text-sm transition flex-shrink-0"
+            title="Close kitchen screen"
+          >
+            ✕
+          </button>
+        </div>
       </div>
       
       {/* Kitchen Stats */}

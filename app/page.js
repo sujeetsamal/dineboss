@@ -246,6 +246,9 @@ For legal inquiries: legal@dineboss.in
             <button onClick={() => setShowVideoModal(true)} className="border-2 border-[#F59E0B] text-[#F59E0B] px-8 py-4 rounded-lg font-semibold hover:bg-[#F59E0B]/10 transition">
               Watch Demo
             </button>
+            <a href="/downloads/DineBoss-POS-Setup.exe" download className="border-2 border-[#F59E0B] text-[#F59E0B] px-8 py-4 rounded-lg font-semibold hover:bg-[#F59E0B]/10 transition flex items-center justify-center gap-2">
+              💻 Download for Windows
+            </a>
           </div>
 
           <div className="flex flex-col md:flex-row gap-4 justify-center text-sm text-[#C4B89A] mb-12">

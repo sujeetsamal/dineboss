@@ -22,6 +22,20 @@ export default function RootLayout({ children }) {
   return (
     <html lang="en" className={`${inter.variable} ${playfair.variable} h-full antialiased`}>
       <body className="min-h-full flex flex-col bg-bg-primary text-text-primary transition-colors duration-200">
+        {/* Hidden print area for Electron printing */}
+        <div
+          id="electron-print-area"
+          style={{
+            display: 'none',
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            width: '80mm',
+            zIndex: 99999,
+            background: 'white',
+            color: 'black',
+          }}
+        />
         <ThemeProvider>
           {children}
         </ThemeProvider>

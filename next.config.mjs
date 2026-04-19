@@ -7,6 +7,9 @@ const nextConfig = {
    * - Custom domains: example.com
    */
 
+  // Electron support - standalone output
+  output: 'standalone',
+
   // Image optimization
   images: {
     remotePatterns: [

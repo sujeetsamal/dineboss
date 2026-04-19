@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { signOut } from "firebase/auth";
+import { useState, useEffect } from "react";
 import {
   BarChart3,
   ChefHat,
@@ -57,12 +58,14 @@ export default function AdminShell({
 
   return (
     <div className="flex min-h-screen bg-bg-primary pb-16 md:pb-0">
-      <aside className="hidden w-[240px] flex-col border-r border-border-theme bg-bg-primary md:flex">
-        <div className="border-b border-border-theme p-4">
-          <h1 className="font-display text-3xl text-gold">DineBoss</h1>
-          <p className="mt-1 text-sm text-text-secondary">{restaurantName || "Your Restaurant"}</p>
+      {/* Desktop Sidebar - Always Visible */}
+      <aside className="hidden md:flex w-56 flex-col border-r border-border-theme bg-gray-900 flex-shrink-0 fixed left-0 top-0 h-screen">
+        <div className="border-b border-gray-800 p-4">
+          <h1 className="font-display text-3xl text-amber-500">DineBoss</h1>
+          <p className="mt-1 text-sm text-gray-400">{restaurantName || "Your Restaurant"}</p>
         </div>
-        <nav className="flex-1 space-y-1 p-3">
+
+        <nav className="flex-1 space-y-1 p-3 overflow-y-auto">
           {NAV_ITEMS.map((item) => {
             const isActive = pathname === item.href;
             const Icon = item.icon;
@@ -70,32 +73,38 @@ export default function AdminShell({
               <Link
                 key={item.href}
                 href={item.href}
-                className={`flex items-center gap-3 rounded-r-xl border-l-2 px-3 py-2 text-sm transition ${
+                className={`flex items-center gap-3 rounded-lg border-l-2 px-3 py-2 text-sm font-medium transition ${
                   isActive
-                    ? "border-gold text-gold bg-gold/10"
-                    : "border-transparent text-text-secondary hover:text-text-primary"
+                    ? "border-amber-500 text-amber-400 bg-amber-500/10"
+                    : "border-transparent text-gray-400 hover:text-gray-200 hover:bg-gray-800"
                 }`}
               >
-                <Icon size={16} />
+                <Icon size={18} className="flex-shrink-0" />
                 <span>{item.label}</span>
                 {item.href === "/admin/live-orders" && activeOrders > 0 ? (
-                  <span className="ml-auto h-2 w-2 rounded-full bg-danger" />
+                  <span className="ml-auto h-2 w-2 rounded-full bg-red-500" />
                 ) : null}
               </Link>
             );
           })}
         </nav>
-        <div className="border-t border-border-theme p-4 text-xs text-text-secondary">
+
+        <div className="border-t border-gray-800 p-4 text-xs text-gray-400">
           <p className="truncate">{user?.email}</p>
-          <button type="button" onClick={handleLogout} className="mt-2 w-full rounded-lg border border-border-theme px-3 py-2">
+          <button type="button" onClick={handleLogout} className="mt-2 w-full rounded-lg border border-gray-700 px-3 py-2 hover:bg-gray-800 transition">
             Logout
           </button>
         </div>
       </aside>
 
-      <div className="flex min-w-0 flex-1 flex-col">
+      {/* Main Content - Offset for desktop sidebar, full width on mobile */}
+      <div className="flex min-w-0 flex-1 flex-col md:ml-56">
         <header className="border-b border-border-theme px-4 py-4 md:px-6">
           <div className="flex flex-col gap-4">
+            {/* Breadcrumb for admin pages */}
+            <div className="flex items-center gap-2 text-sm text-gray-400">
+              <span className="text-white font-medium">Admin Dashboard</span>
+            </div>
             {/* Restaurant Name & Time */}
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
@@ -103,6 +112,16 @@ export default function AdminShell({
                 <p className="text-xs text-text-muted">Welcome back, {user?.displayName || "Chef"} 👋</p>
               </div>
               <div className="flex items-center gap-4">
+                {/* Back button - Electron only */}
+                {typeof window !== 'undefined' && window.electronAPI?.isElectron && (
+                  <button
+                    onClick={() => window.history.back()}
+                    className="flex h-9 w-9 items-center justify-center rounded-full border border-border-theme hover:border-gold hover:bg-gold/10 transition"
+                    title="Go back"
+                  >
+                    <span className="text-lg">←</span>
+                  </button>
+                )}
                 {mounted && (
                   <button
                     onClick={toggleTheme}
@@ -135,17 +154,20 @@ export default function AdminShell({
         <main className="flex-1 px-4 py-4 md:px-6 md:py-6">{children}</main>
       </div>
 
-      <nav className="fixed bottom-0 left-0 right-0 z-30 grid grid-cols-4 border-t border-border-theme bg-bg-card p-2 md:hidden">
-        {NAV_ITEMS.slice(0, 4).map((item) => {
+      {/* Mobile Bottom Navigation - Only on mobile */}
+      <nav className="fixed md:hidden bottom-0 left-0 right-0 z-40 flex border-t border-gray-800 bg-gray-900 p-0">
+        {NAV_ITEMS.slice(0, 5).map((item) => {
           const Icon = item.icon;
           const isActive = pathname === item.href;
           return (
             <Link
               key={item.href}
               href={item.href}
-              className={`flex flex-col items-center gap-1 rounded-lg py-2 text-[11px] ${isActive ? "text-gold" : "text-text-secondary"}`}
+              className={`flex-1 flex flex-col items-center justify-center gap-0.5 py-3 text-[10px] font-medium transition ${
+                isActive ? "text-amber-400 bg-gray-800" : "text-gray-400 hover:text-gray-200"
+              }`}
             >
-              <Icon size={16} />
+              <Icon size={20} />
               <span>{item.label}</span>
             </Link>
           );

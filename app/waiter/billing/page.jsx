@@ -15,7 +15,9 @@ import {
   updateOrderPaymentStatus,
   updateOrderBillDetails,
   placeOrder,
+  deleteOrder,
 } from "@/lib/firestore";
+import { printReceipt, buildReceiptHTML, printKOT } from "@/utils/printReceipt";
 
 // BillCalculations Component
 function BillCalculations({ order, restaurantId, orderId, onUpdate }) {
@@ -165,6 +167,8 @@ export default function WaiterBillingPage() {
   const [selectedTable, setSelectedTable] = useState(null);
   const [createBillMenuSearch, setCreateBillMenuSearch] = useState("");
   const [createBillItems, setCreateBillItems] = useState([]);
+  const [defaultPaperSize, setDefaultPaperSize] = useState("80mm");
+  const [deleteConfirmId, setDeleteConfirmId] = useState(null);
 
   // Subscribe to real-time orders
   useEffect(() => {
@@ -187,7 +191,13 @@ export default function WaiterBillingPage() {
   // Subscribe to restaurant
   useEffect(() => {
     if (!restaurantId) return;
-    const unsub = subscribeToRestaurant(restaurantId, setRestaurant, (e) => {
+    const unsub = subscribeToRestaurant(restaurantId, (data) => {
+      setRestaurant(data);
+      // Load paper size from settings
+      if (data?.defaultPaperSize) {
+        setDefaultPaperSize(data.defaultPaperSize);
+      }
+    }, (e) => {
       console.error("Failed to load restaurant:", e);
     });
     return () => unsub?.();
@@ -318,6 +328,22 @@ export default function WaiterBillingPage() {
     router.replace("/login");
   };
 
+  // Handle delete order
+  const handleDeleteOrder = async (orderId) => {
+    if (!restaurantId) return;
+    try {
+      await deleteOrder(restaurantId, orderId);
+      toast.success("Order deleted");
+      if (selectedOrderId === orderId) {
+        setSelectedOrderId(null);
+      }
+      setDeleteConfirmId(null);
+    } catch (e) {
+      console.error("Failed to delete order:", e);
+      toast.error("Failed to delete order");
+    }
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen bg-black flex items-center justify-center">
@@ -401,23 +427,62 @@ export default function WaiterBillingPage() {
                 filteredOrders.map((order) => (
                   <div
                     key={order.id}
-                    onClick={() => setSelectedOrderId(order.id)}
-                    className={`p-3 rounded-lg cursor-pointer transition border ${
+                    className={`p-3 rounded-lg transition border relative ${
                       selectedOrderId === order.id
                         ? "bg-amber-500/20 border-amber-500"
                         : "bg-gray-800 border-gray-700 hover:border-amber-500/50"
                     }`}
                   >
                     <div className="flex items-center justify-between mb-2">
-                      <span className="font-semibold text-sm">Order #{order.id?.slice(-6).toUpperCase()}</span>
-                      <span className="text-xs text-gray-400">Table {order.tableNumber}</span>
+                      <span 
+                        onClick={() => setSelectedOrderId(order.id)}
+                        className="font-semibold text-sm flex-1 cursor-pointer"
+                      >
+                        Order #{order.id?.slice(-6).toUpperCase()}
+                      </span>
+                      <span className="text-xs text-gray-400 mr-2">Table {order.tableNumber}</span>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setDeleteConfirmId(deleteConfirmId === order.id ? null : order.id);
+                        }}
+                        className="text-red-400 hover:text-red-300 text-lg leading-none"
+                      >
+                        🗑️
+                      </button>
                     </div>
+
+                    {deleteConfirmId === order.id && (
+                      <div className="mb-3 p-2 bg-red-900/30 border border-red-500/30 rounded text-sm">
+                        <p className="text-red-200 mb-2 text-xs">Delete this order?</p>
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() => handleDeleteOrder(order.id)}
+                            className="flex-1 bg-red-600 hover:bg-red-700 text-white text-xs font-semibold py-1 rounded transition"
+                          >
+                            Yes, delete
+                          </button>
+                          <button
+                            onClick={() => setDeleteConfirmId(null)}
+                            className="flex-1 bg-gray-700 hover:bg-gray-600 text-white text-xs font-semibold py-1 rounded transition"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
                     <div className="text-xs text-gray-400 mb-2">{order.items?.length || 0} items</div>
                     <div className="flex gap-2 flex-wrap">
                       <span className={`text-xs px-2 py-1 rounded ${getStatusColor(order.status)}`}>{order.status}</span>
                       <span className={`text-xs px-2 py-1 rounded ${getPaymentColor(order.paymentStatus)}`}>{order.paymentStatus}</span>
                     </div>
-                    <div className="text-sm font-semibold mt-2 text-amber-500">₹{Number(order.total || 0).toFixed(0)}</div>
+                    <div 
+                      onClick={() => setSelectedOrderId(order.id)}
+                      className="text-sm font-semibold mt-2 text-amber-500 cursor-pointer"
+                    >
+                      ₹{Number(order.total || 0).toFixed(0)}
+                    </div>
                   </div>
                 ))
               )}
@@ -610,12 +675,26 @@ export default function WaiterBillingPage() {
               </div>
 
               {/* Print Bill Button */}
-              <button
-                onClick={() => printBill(selectedOrder, restaurant)}
-                className="w-full bg-amber-500 hover:bg-amber-600 text-black font-semibold px-4 py-3 rounded-lg transition flex items-center justify-center gap-2"
-              >
-                🖨️ Print Bill (80mm)
-              </button>
+              <div className="space-y-2">
+                <p className="text-xs text-gray-500">Paper: {defaultPaperSize}</p>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    onClick={() => {
+                      const receiptHTML = buildReceiptHTML(selectedOrder, restaurant || { name: "Restaurant" });
+                      printReceipt(receiptHTML, defaultPaperSize);
+                    }}
+                    className="w-full bg-amber-500 hover:bg-amber-600 text-black font-semibold py-3 rounded-lg transition flex items-center justify-center gap-2 text-sm"
+                  >
+                    🖨️ Print Bill
+                  </button>
+                  <button
+                    onClick={() => printKOT(selectedOrder, defaultPaperSize)}
+                    className="w-full border border-amber-500 text-amber-500 hover:bg-amber-500 hover:text-black font-semibold py-3 rounded-lg transition flex items-center justify-center gap-2 text-sm"
+                  >
+                    🍳 KOT
+                  </button>
+                </div>
+              </div>
             </div>
           ) : (
             <div className="bg-gray-900 rounded-lg border border-gray-700 p-8 flex items-center justify-center h-full">
@@ -874,78 +953,6 @@ export default function WaiterBillingPage() {
       )}
     </div>
   );
-}
-
-
-// Shared bill printer (local, side-effect free) for use across components
-export function printBill(order, restaurantInfo, printSize = "80mm") {
-  if (!order) return;
-
-  const items = order.items || [];
-  const subtotal = items.reduce((sum, item) => sum + Number(item.price || 0) * Number(item.quantity || 0), 0);
-  const gstPercent = Number(order.gstPercent || 5);
-  const gstAmount = Math.round(subtotal * (gstPercent / 100));
-  const serviceChargePercent = Number(order.serviceChargePercent || 0);
-  const serviceChargeAmount = Math.round(subtotal * (serviceChargePercent / 100));
-  const discount = Number(order.discount || 0);
-  const finalTotal = subtotal + gstAmount + serviceChargeAmount - discount;
-
-  // Set max-width based on print size
-  const maxWidth = printSize === "58mm" ? "58mm" : printSize === "80mm" ? "80mm" : "210mm";
-
-  const billHTML = `
-    <!DOCTYPE html>
-    <html>
-    <head>
-      <meta charset="UTF-8">
-      <title>Bill - Table ${order.tableNumber}</title>
-      <style>
-        body { font-family: Arial, sans-serif; max-width: ${maxWidth}; margin: 0; padding: 10px; background: white; }
-        .invoice { border: 1px solid #000; padding: 15px; text-align: center; }
-        .header { margin-bottom: 20px; border-bottom: 2px solid #000; padding-bottom: 10px; }
-        .restaurant-name { font-size: 16px; font-weight: bold; }
-        .bill-info { text-align: left; font-size: 12px; margin: 10px 0; }
-        .items { text-align: left; margin: 15px 0; border-top: 1px solid #000; border-bottom: 1px solid #000; padding: 10px 0; }
-        .item-row { display: flex; justify-content: space-between; font-size: 12px; margin: 5px 0; }
-        .totals { text-align: left; font-size: 12px; margin: 10px 0; }
-        .grand-total { border-top: 2px solid #000; border-bottom: 2px solid #000; padding: 5px 0; margin: 10px 0; font-weight: bold; font-size: 14px; }
-      </style>
-    </head>
-    <body>
-      <div class="invoice">
-        <div class="header">
-          <div class="restaurant-name">${restaurantInfo?.name || "Restaurant"}</div>
-          <p style="margin: 5px 0 0 0; font-size: 11px;">INVOICE</p>
-        </div>
-        <div class="bill-info">
-          <p><strong>Table:</strong> ${order.tableNumber}</p>
-          <p><strong>Order ID:</strong> ${String(order.id).substring(0, 8).toUpperCase()}</p>
-          <p><strong>Date:</strong> ${new Date(order.createdAt?.toDate?.() || order.createdAt).toLocaleDateString()}</p>
-          <p><strong>Time:</strong> ${new Date(order.createdAt?.toDate?.() || order.createdAt).toLocaleTimeString()}</p>
-        </div>
-        <div class="items">
-          <div style="font-weight: bold; border-bottom: 1px solid #000; padding-bottom: 5px; margin-bottom: 5px; display: flex; justify-content: space-between; font-size: 11px;">
-            <span style="flex: 1;">Item</span><span style="width: 30px; text-align: center;">Qty</span><span style="width: 50px; text-align: right;">Amount</span>
-          </div>
-          ${items.map((it) => `<div class="item-row"><div class="item-name">${it.name}</div><div class="item-qty">${it.quantity}</div><div class="item-price">₹${(Number(it.price || 0) * Number(it.quantity || 0)).toFixed(0)}</div></div>`).join('')}
-        </div>
-        <div class="totals">
-          <div class="total-row"><span class="total-label">Subtotal:</span><span class="total-value">₹${subtotal.toFixed(0)}</span></div>
-          ${gstAmount > 0 ? `<div class="total-row"><span class="total-label">GST (${gstPercent}%):</span><span class="total-value">₹${gstAmount.toFixed(0)}</span></div>` : ''}
-          ${serviceChargeAmount > 0 ? `<div class="total-row"><span class="total-label">Service:</span><span class="total-value">₹${serviceChargeAmount.toFixed(0)}</span></div>` : ''}
-          ${discount > 0 ? `<div class="total-row"><span class="total-label">Discount:</span><span class="total-value">-₹${discount.toFixed(0)}</span></div>` : ''}
-        </div>
-        <div class="grand-total"><div style="display: flex; justify-content: space-between;"><span>TOTAL:</span><span>₹${finalTotal.toFixed(0)}</span></div></div>
-        <div class="bill-info"><p><strong>Payment Status:</strong> ${order.paymentStatus === 'paid' ? '✓ PAID' : 'UNPAID'}</p><p><strong>Payment Method:</strong> ${order.paymentMethod || 'Cash'}</p></div>
-      </div>
-    </body>
-    </html>
-  `;
-
-  const w = window.open('', '_blank');
-  w.document.write(billHTML);
-  w.document.close();
-  w.print();
 }
 
 const STATUS_COLORS = {

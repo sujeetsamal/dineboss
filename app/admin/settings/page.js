@@ -16,6 +16,9 @@ export default function SettingsPage() {
   const [isSaving, setIsSaving] = useState(false);
   const [isUploadingLogo, setIsUploadingLogo] = useState(false);
   const [error, setError] = useState('');
+  const [availablePrinters, setAvailablePrinters] = useState([]);
+  const [selectedPrinter, setSelectedPrinter] = useState('default');
+  const [isElectron, setIsElectron] = useState(false);
   const logoInputRef = useRef(null);
 
   useEffect(() => {
@@ -30,11 +33,63 @@ export default function SettingsPage() {
             billFooterMessage: data.billFooterMessage || 'Thank you for dining with us!',
             showGstOnBill: data.showGstOnBill !== false,
             showLogoOnBill: data.showLogoOnBill !== false,
+            defaultPaperSize: data.defaultPaperSize || '80mm',
+            thankYouMessage: data.thankYouMessage || 'Thank you for dining with us!',
           });
         }
       })
       .catch((err) => setError(err.message || 'Failed to load settings'));
   }, [restaurantId]);
+
+  // Load printers from Electron
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    
+    const isElectronApp = window.electronAPI?.isElectron;
+    setIsElectron(isElectronApp);
+
+    if (isElectronApp) {
+      // Initial load
+      window.electronAPI.getPrinters().then(printers => {
+        setAvailablePrinters(printers);
+        
+        // Auto-select default printer or saved printer
+        const defaultPrinter = printers.find(p => p.isDefault);
+        const savedPrinter = localStorage.getItem('dineboss_printer_name');
+        
+        if (savedPrinter) {
+          setSelectedPrinter(savedPrinter);
+        } else if (defaultPrinter) {
+          setSelectedPrinter(defaultPrinter.name);
+          localStorage.setItem('dineboss_printer_name', defaultPrinter.name);
+        }
+      }).catch(err => {
+        console.error('Failed to load printers:', err);
+      });
+
+      // Listen for printer updates every 30 seconds
+      const handlePrintersUpdated = (updatedPrinters) => {
+        setAvailablePrinters(prevPrinters => {
+          // Merge status updates with existing printer info
+          return prevPrinters.map(p => {
+            const updated = updatedPrinters.find(u => u.name === p.name);
+            return updated ? { ...p, ...updated } : p;
+          });
+        });
+      };
+
+      window.electronAPI.onPrintersUpdated(handlePrintersUpdated);
+
+      // Cleanup
+      return () => window.electronAPI.removePrintersListener();
+    } else {
+      // Load saved printer from localStorage even if not Electron
+      const savedPrinter = localStorage.getItem('dineboss_printer_name');
+      if (savedPrinter) {
+        setSelectedPrinter(savedPrinter);
+      }
+    }
+  }, []);
 
   async function handleLogoUpload(e) {
     const file = e.target.files?.[0];
@@ -92,6 +147,8 @@ export default function SettingsPage() {
         logoUrl: settings.logoUrl || null,
         orderLimitPerDay: parseInt(settings.orderLimitPerDay) || 50,
         enableOrderSound: settings.enableOrderSound !== false,
+        defaultPaperSize: settings.defaultPaperSize || '80mm',
+        thankYouMessage: settings.thankYouMessage || 'Thank you for dining with us!',
       });
       toast.success('Settings saved');
     } catch (err) {
@@ -413,6 +470,85 @@ export default function SettingsPage() {
           <p className="text-xs text-text-muted">
             When enabled, the kitchen screen will play a notification sound and animate new orders.
           </p>
+        </div>
+
+        {/* THERMAL PRINTER SETTINGS SECTION */}
+        <div className="card space-y-5 p-6">
+          <h2 className="text-lg font-semibold text-gold">Thermal Printer Settings</h2>
+
+          <div>
+            <label className="block text-sm font-medium text-text-secondary mb-3">Default Paper Size</label>
+            <div className="flex gap-2 flex-wrap">
+              {['50mm', '58mm', '80mm'].map((size) => (
+                <button
+                  key={size}
+                  onClick={() => {
+                    setSettings({ ...settings, defaultPaperSize: size });
+                  }}
+                  className={`px-4 py-2 rounded-full font-medium transition border ${
+                    settings.defaultPaperSize === size
+                      ? 'bg-amber-500 text-white border-amber-500'
+                      : 'border-gray-600 text-gray-400 hover:border-amber-500/50'
+                  }`}
+                >
+                  {size}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Electron Printer Detection */}
+          {isElectron && availablePrinters.length > 0 ? (
+            <div>
+              <label className="block text-sm font-medium text-text-secondary mb-2">Select Printer</label>
+              <div className="space-y-2">
+                {availablePrinters.map((printer) => (
+                  <label key={printer.name} className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="printer"
+                      value={printer.name}
+                      checked={selectedPrinter === printer.name}
+                      onChange={(e) => {
+                        setSelectedPrinter(e.target.value);
+                        localStorage.setItem('dineboss_printer_name', e.target.value);
+                      }}
+                      className="w-4 h-4"
+                    />
+                    <span className="text-sm text-text-primary">
+                      {printer.isDefault ? '🟢' : printer.status === 'ready' ? '🟢' : '🔴'}
+                      {' '}
+                      {printer.name}
+                      {printer.isDefault ? ' (Default)' : ''}
+                    </span>
+                    <span className="text-xs text-text-muted">
+                      ({printer.status})
+                    </span>
+                  </label>
+                ))}
+              </div>
+            </div>
+          ) : isElectron ? (
+            <div className="rounded-lg bg-blue-50 p-3 text-blue-800 text-sm">
+              📢 No printers detected. Please install a thermal printer driver.
+            </div>
+          ) : (
+            <div className="rounded-lg bg-amber-50 p-3 text-amber-800 text-sm">
+              💻 Install <strong>DineBoss Desktop App</strong> for automatic printer detection and silent printing.
+            </div>
+          )}
+
+          <div>
+            <label className="block text-sm font-medium text-text-secondary mb-1">Thank You Message</label>
+            <textarea
+              value={settings.thankYouMessage || 'Thank you for dining with us!'}
+              onChange={(e) => setSettings({ ...settings, thankYouMessage: e.target.value })}
+              rows="3"
+              className="form-input w-full rounded-lg border border-text-muted/30 bg-bg-secondary px-3 py-2 text-text-primary placeholder-text-muted/50"
+              placeholder="Thank you for dining with us!"
+            />
+            <p className="text-xs text-text-muted mt-1">This message will appear on printed bills and receipts</p>
+          </div>
         </div>
 
         {/* DOMAIN SETTINGS SECTION */}

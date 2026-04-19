@@ -1,9 +1,11 @@
 "use client";
 
 import React, { useEffect, useMemo, useState, useRef } from 'react'
-import { subscribeToMenu, subscribeToOrders, subscribeToTables, subscribeToRestaurant, placeOrder, updateOrderStatus, updateOrderPaymentStatus, updateOrderBillDetails } from '@/lib/firestore'
+import Link from 'next/link'
+import { subscribeToMenu, subscribeToOrders, subscribeToTables, subscribeToRestaurant, placeOrder, updateOrderStatus, updateOrderPaymentStatus, updateOrderBillDetails, deleteOrder } from '@/lib/firestore'
 import { useCurrentUser } from '@/hooks/useCurrentUser'
 import { toast } from 'react-hot-toast'
+import { printReceipt, buildReceiptHTML, printKOT } from '@/utils/printReceipt'
 
 // Debounce utility for Firestore writes
 function useDebounce(callback, delay) {
@@ -14,218 +16,189 @@ function useDebounce(callback, delay) {
   }
 }
 
-// Print bill function
-function printBill(order, restaurantInfo) {
-  if (!order) return
+// Bill Preview Modal Component
+function BillPreviewModal({ isOpen, selectedOrder, restaurantSettings, paperSize, onClose, onConfirmPrint }) {
+  const [isPrinting, setIsPrinting] = useState(false)
 
-  const items = order.items || []
-  const subtotal = items.reduce((sum, item) => sum + Number(item.price || 0) * Number(item.quantity || 0), 0)
-  const gstPercent = Number(order.gstPercent || 5)
-  const gstAmount = Math.round(subtotal * (gstPercent / 100))
-  const serviceChargePercent = Number(order.serviceChargePercent || 0)
-  const serviceChargeAmount = Math.round(subtotal * (serviceChargePercent / 100))
-  const discountType = order.discountType || 'flat'
-  const discountValue = Number(order.discount || 0)
-  const discount = discountType === 'percentage' ? Math.round(subtotal * (discountValue / 100)) : discountValue
-  const finalTotal = subtotal + gstAmount + serviceChargeAmount - discount
+  if (!isOpen) return null
 
-  const billHTML = `
-    <!DOCTYPE html>
-    <html>
-    <head>
-      <meta charset="UTF-8">
-      <title>Bill - Table ${order.tableNumber}</title>
-      <style>
-        @media print {
-          * { margin: 0; padding: 0; }
-          body { margin: 0; padding: 0; }
-          .invoice { margin: 0; }
-        }
-        body {
-          font-family: Arial, sans-serif;
-          max-width: 80mm;
-          margin: 0;
-          padding: 10px;
-          background: white;
-          color: black;
-        }
-        .invoice {
-          border: 1px solid #000;
-          padding: 15px;
-          text-align: center;
-        }
-        .header {
-          margin-bottom: 15px;
-          border-bottom: 2px solid #000;
-          padding-bottom: 10px;
-        }
-        .restaurant-name {
-          font-size: 16px;
-          font-weight: bold;
-          margin-bottom: 5px;
-        }
-        .restaurant-info {
-          font-size: 10px;
-          line-height: 1.4;
-        }
-        .bill-info {
-          text-align: left;
-          font-size: 11px;
-          margin: 10px 0;
-          border-bottom: 1px solid #000;
-          padding-bottom: 10px;
-        }
-        .bill-info p {
-          margin: 2px 0;
-        }
-        .items {
-          text-align: left;
-          margin: 10px 0;
-          border-bottom: 1px solid #000;
-          padding: 10px 0;
-          font-size: 11px;
-        }
-        .item-header {
-          display: flex;
-          justify-content: space-between;
-          border-bottom: 1px solid #000;
-          padding-bottom: 5px;
-          margin-bottom: 5px;
-          font-weight: bold;
-          font-size: 10px;
-        }
-        .item-row {
-          display: flex;
-          justify-content: space-between;
-          margin: 4px 0;
-        }
-        .item-name {
-          flex: 1;
-        }
-        .item-qty {
-          width: 25px;
-          text-align: center;
-        }
-        .item-price {
-          width: 40px;
-          text-align: right;
-        }
-        .totals {
-          text-align: left;
-          font-size: 11px;
-          margin: 10px 0;
-        }
-        .total-row {
-          display: flex;
-          justify-content: space-between;
-          margin: 4px 0;
-        }
-        .total-label {
-          flex: 1;
-        }
-        .total-value {
-          width: 50px;
-          text-align: right;
-        }
-        .grand-total {
-          border-top: 2px solid #000;
-          border-bottom: 2px solid #000;
-          padding: 8px 0;
-          margin: 10px 0;
-          font-weight: bold;
-          font-size: 13px;
-          display: flex;
-          justify-content: space-between;
-        }
-        .footer {
-          text-align: center;
-          font-size: 10px;
-          margin-top: 10px;
-          padding-top: 10px;
-          border-top: 1px solid #000;
-        }
-        .divider { border-bottom: 1px solid #000; margin: 5px 0; }
-      </style>
-    </head>
-    <body>
-      <div class="invoice">
-        <div class="header">
-          <div class="restaurant-name">${restaurantInfo?.name || "Restaurant"}</div>
-          ${restaurantInfo?.address ? `<div class="restaurant-info">${restaurantInfo.address}</div>` : ''}
-          ${restaurantInfo?.gstNumber ? `<div class="restaurant-info">GST: ${restaurantInfo.gstNumber}</div>` : ''}
-          <p style="margin: 5px 0 0 0; font-size: 10px;">INVOICE</p>
+  // Paper size to pixels mapping
+  const paperSizePx = paperSize === '58mm' ? 232
+    : paperSize === '50mm' ? 200 : 320
+
+  const handlePrint = async () => {
+    setIsPrinting(true)
+    try {
+      await onConfirmPrint(selectedOrder, restaurantSettings, paperSize)
+      toast.success('🖨️ Sending to printer...')
+      onClose()
+    } catch (error) {
+      console.error('Print failed:', error)
+      toast.error('Print failed: ' + (error.message || 'Unknown error'))
+    } finally {
+      setIsPrinting(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
+      <div className="bg-white rounded-lg shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-hidden flex flex-col">
+        {/* Modal Header */}
+        <div className="bg-gray-900 text-white p-4 flex items-center justify-between border-b border-gray-800">
+          <h3 className="text-lg font-semibold">Bill Preview</h3>
+          <button
+            onClick={onClose}
+            disabled={isPrinting}
+            className="text-gray-400 hover:text-white text-2xl leading-none transition disabled:opacity-50"
+          >
+            ✕
+          </button>
         </div>
 
-        <div class="bill-info">
-          <p><strong>Table:</strong> ${order.tableNumber}</p>
-          <p><strong>Order ID:</strong> ${String(order.id).substring(0, 8).toUpperCase()}</p>
-          <p><strong>Date:</strong> ${new Date().toLocaleDateString()}</p>
-          <p><strong>Time:</strong> ${new Date().toLocaleTimeString()}</p>
-        </div>
+        {/* Bill Preview Content - Centered with correct paper width */}
+        <div className="flex-1 overflow-y-auto p-6 flex items-center justify-center bg-gray-50">
+          {/* Receipt preview — monospace font, fixed width matching paper size */}
+          <div style={{
+            width: paperSizePx + 'px',
+            fontFamily: "'Courier New', Courier, monospace",
+            fontSize: '12px',
+            lineHeight: '1.6',
+            backgroundColor: 'white',
+            color: 'black',
+            padding: '16px',
+            margin: '0 auto',
+            minHeight: '200px',
+          }}>
 
-        <div class="items">
-          <div class="item-header">
-            <span class="item-name">Item</span>
-            <span class="item-qty">Qty</span>
-            <span class="item-price">Amount</span>
-          </div>
-          ${items.map((it) => `
-            <div class="item-row">
-              <div class="item-name">${it.name}</div>
-              <div class="item-qty">${it.quantity}</div>
-              <div class="item-price">₹${(Number(it.price || 0) * Number(it.quantity || 0)).toFixed(0)}</div>
+            {/* Restaurant name */}
+            <div style={{ textAlign: 'center', fontWeight: 'bold', fontSize: '14px', marginBottom: '4px' }}>
+              {restaurantSettings?.restaurantName || restaurantSettings?.name || 'Restaurant'}
             </div>
-          `).join('')}
+            {restaurantSettings?.address && (
+              <div style={{ textAlign: 'center', fontSize: '11px' }}>{restaurantSettings.address}</div>
+            )}
+            {restaurantSettings?.gstNumber && (
+              <div style={{ textAlign: 'center', fontSize: '11px' }}>GSTIN: {restaurantSettings.gstNumber}</div>
+            )}
+
+            {/* Divider */}
+            <div style={{ borderTop: '1px dashed black', margin: '6px 0' }} />
+
+            {/* Order info */}
+            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+              <span>Order: #{String(selectedOrder?.id || '').substring(0, 8)}</span>
+              <span>Table: {selectedOrder?.tableName || 'N/A'}</span>
+            </div>
+            <div>Date: {new Date().toLocaleDateString('en-IN')}</div>
+            {selectedOrder?.staffName && <div>Staff: {selectedOrder.staffName}</div>}
+
+            {/* Divider */}
+            <div style={{ borderTop: '1px dashed black', margin: '6px 0' }} />
+
+            {/* Items header — each word in its own flex child */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 'bold' }}>
+              <span style={{ flex: 1 }}>Item</span>
+              <span style={{ width: '30px', textAlign: 'center' }}>Qty</span>
+              <span style={{ width: '60px', textAlign: 'right' }}>Amount</span>
+            </div>
+
+            <div style={{ borderTop: '1px dashed black', margin: '4px 0' }} />
+
+            {/* Item rows */}
+            {(selectedOrder?.items || []).map((item, i) => {
+              const itemTotal = (parseFloat(item.price) || 0) * (parseInt(item.quantity) || 1);
+              return (
+                <div key={i} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '2px' }}>
+                  <span style={{ flex: 1, paddingRight: '8px' }}>{item.name}</span>
+                  <span style={{ width: '30px', textAlign: 'center' }}>{item.quantity}x</span>
+                  <span style={{ width: '60px', textAlign: 'right' }}>₹{itemTotal}</span>
+                </div>
+              );
+            })}
+
+            <div style={{ borderTop: '1px dashed black', margin: '6px 0' }} />
+
+            {/* Totals */}
+            {(() => {
+              const subtotal = (selectedOrder?.items || []).reduce((sum, item) =>
+                sum + ((parseFloat(item.price) || 0) * (parseInt(item.quantity) || 1)), 0);
+              const gstPct = parseFloat(selectedOrder?.gstPercent) || 0;
+              const svcPct = parseFloat(selectedOrder?.serviceChargePercent) || 0;
+              const discVal = parseFloat(selectedOrder?.discount) || 0;
+              const gstAmt = Math.round(subtotal * gstPct / 100);
+              const svcAmt = Math.round(subtotal * svcPct / 100);
+              const discAmt = selectedOrder?.discountType === 'percentage'
+                ? Math.round(subtotal * discVal / 100) : discVal;
+              const total = subtotal + gstAmt + svcAmt - discAmt;
+
+              return (
+                <>
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span>Subtotal</span><span>₹{subtotal}</span>
+                  </div>
+                  {gstPct > 0 && (
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <span>GST ({gstPct}%)</span><span>₹{gstAmt}</span>
+                    </div>
+                  )}
+                  {svcPct > 0 && (
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <span>Service ({svcPct}%)</span><span>₹{svcAmt}</span>
+                    </div>
+                  )}
+                  {discAmt > 0 && (
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <span>Discount</span><span>-₹{discAmt}</span>
+                    </div>
+                  )}
+                  <div style={{ borderTop: '1px solid black', margin: '6px 0' }} />
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 'bold', fontSize: '14px' }}>
+                    <span>TOTAL</span><span>₹{total}</span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '4px' }}>
+                    <span>Payment</span>
+                    <span>{selectedOrder?.paymentMethod || 'Cash'}</span>
+                  </div>
+                  <div style={{ borderTop: '1px dashed black', margin: '6px 0' }} />
+                  <div style={{ textAlign: 'center', fontSize: '11px' }}>
+                    {restaurantSettings?.thankYouMessage || 'Thank you for dining with us!'}
+                  </div>
+                  <div style={{ textAlign: 'center', fontSize: '11px' }}>Please visit again</div>
+                </>
+              );
+            })()}
+          </div>
         </div>
 
-        <div class="totals">
-          <div class="total-row">
-            <span class="total-label">Subtotal:</span>
-            <span class="total-value">₹${subtotal.toFixed(0)}</span>
-          </div>
-          ${gstAmount > 0 ? `
-          <div class="total-row">
-            <span class="total-label">GST (${gstPercent}%):</span>
-            <span class="total-value">₹${gstAmount.toFixed(0)}</span>
-          </div>
-          ` : ''}
-          ${serviceChargeAmount > 0 ? `
-          <div class="total-row">
-            <span class="total-label">Service:</span>
-            <span class="total-value">₹${serviceChargeAmount.toFixed(0)}</span>
-          </div>
-          ` : ''}
-          ${discount > 0 ? `
-          <div class="total-row">
-            <span class="total-label">Discount:</span>
-            <span class="total-value">-₹${discount.toFixed(0)}</span>
-          </div>
-          ` : ''}
-        </div>
-
-        <div class="grand-total">
-          <span>TOTAL:</span>
-          <span>₹${finalTotal.toFixed(0)}</span>
-        </div>
-
-        <div class="bill-info">
-          <p><strong>Payment Method:</strong> ${order.paymentMethod || 'Cash'}</p>
-          <p><strong>Payment Status:</strong> ${order.paymentStatus === 'paid' ? '✓ PAID' : 'UNPAID'}</p>
-        </div>
-
-        <div class="footer">
-          <p>Thank you for your visit!</p>
-          <p style="margin: 5px 0 0 0; font-size: 9px;">Powered by DineBoss</p>
+        {/* Modal Footer */}
+        <div className="bg-gray-900 border-t border-gray-800 p-4 flex gap-2">
+          <button
+            onClick={onClose}
+            disabled={isPrinting}
+            className="flex-1 bg-gray-700 hover:bg-gray-600 disabled:bg-gray-600 text-white font-semibold px-4 py-3 rounded-lg transition disabled:opacity-50"
+          >
+            ← Back
+          </button>
+          <button
+            onClick={handlePrint}
+            disabled={isPrinting}
+            className="flex-1 bg-amber-500 hover:bg-amber-600 disabled:bg-amber-600 text-black font-semibold px-4 py-3 rounded-lg transition flex items-center justify-center gap-2 disabled:opacity-50"
+          >
+            {isPrinting ? (
+              <>
+                <span className="inline-block animate-spin">⌛</span>
+                Printing...
+              </>
+            ) : (
+              <>
+                🖨️ Confirm & Print
+              </>
+            )}
+          </button>
         </div>
       </div>
-    </body>
-    </html>
-  `
-
-  const printWindow = window.open('', '_blank')
-  printWindow.document.write(billHTML)
-  printWindow.document.close()
-  printWindow.print()
+    </div>
+  )
 }
 
 // BillCalculations Component
@@ -366,6 +339,15 @@ export default function PosBillingPage() {
   const [statusFilter, setStatusFilter] = useState('all')
   const [paymentFilter, setPaymentFilter] = useState('all')
   const [restaurant, setRestaurant] = useState(null)
+  const [defaultPaperSize, setDefaultPaperSize] = useState('80mm')
+  const [deleteConfirmId, setDeleteConfirmId] = useState(null)
+  
+  // Printer status
+  const [printerStatus, setPrinterStatus] = useState({
+    name: 'No printer',
+    paperSize: '80mm',
+    isOnline: false
+  })
   
   // Menu data for Create Bill modal
   const [menu, setMenu] = useState([])
@@ -379,6 +361,9 @@ export default function PosBillingPage() {
   const [addItemModalOpen, setAddItemModalOpen] = useState(false)
   const [addItemSearch, setAddItemSearch] = useState('')
   const [addItemQuantity, setAddItemQuantity] = useState(1)
+
+  // Bill Preview Modal
+  const [showBillPreview, setShowBillPreview] = useState(false)
 
   // Subscribe to orders
   useEffect(() => {
@@ -411,11 +396,56 @@ export default function PosBillingPage() {
   // Subscribe to restaurant
   useEffect(() => {
     if (!restaurantId) return
-    const unsub = subscribeToRestaurant(restaurantId, setRestaurant, (e) => {
+    const unsub = subscribeToRestaurant(restaurantId, (data) => {
+      setRestaurant(data)
+      // Load paper size from settings
+      if (data?.defaultPaperSize) {
+        setDefaultPaperSize(data.defaultPaperSize)
+      }
+    }, (e) => {
       console.error('Failed to load restaurant:', e)
     })
     return () => unsub?.()
   }, [restaurantId])
+
+  // Load printer status (Electron only)
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    
+    if (window.electronAPI?.isElectron) {
+      // Load initial printer status
+      window.electronAPI.getPrinters().then(printers => {
+        const savedPrinterName = localStorage.getItem('dineboss_printer_name');
+        const selectedPrinter = printers.find(p => p.name === savedPrinterName) || printers.find(p => p.isDefault);
+        
+        if (selectedPrinter) {
+          setPrinterStatus({
+            name: selectedPrinter.name,
+            paperSize: selectedPrinter.detectedPaperSize || '80mm',
+            isOnline: selectedPrinter.status === 'ready' && selectedPrinter.isOnline
+          });
+        }
+      }).catch(err => console.error('Failed to load printers:', err));
+
+      // Listen for printer updates
+      const handlePrintersUpdated = (printers) => {
+        const savedPrinterName = localStorage.getItem('dineboss_printer_name');
+        const selectedPrinter = printers.find(p => p.name === savedPrinterName) || printers.find(p => p.isDefault);
+        
+        if (selectedPrinter) {
+          setPrinterStatus({
+            name: selectedPrinter.name,
+            paperSize: selectedPrinter.detectedPaperSize || '80mm',
+            isOnline: selectedPrinter.status === 'ready' && selectedPrinter.isOnline
+          });
+        }
+      };
+
+      window.electronAPI.onPrintersUpdated(handlePrintersUpdated);
+
+      return () => window.electronAPI.removePrintersListener();
+    }
+  }, []);
 
   // Filter orders based on status and payment filters
   const filteredOrders = useMemo(() => {
@@ -543,6 +573,155 @@ export default function PosBillingPage() {
     }
   }
 
+  // Handle delete order
+  const handleDeleteOrder = async (orderId) => {
+    if (!restaurantId) return
+    try {
+      await deleteOrder(restaurantId, orderId)
+      toast.success('Order deleted')
+      if (selectedOrderId === orderId) {
+        setSelectedOrderId(null)
+      }
+      setDeleteConfirmId(null)
+    } catch (e) {
+      console.error('Failed to delete order:', e)
+      toast.error('Failed to delete order')
+    }
+  }
+
+  // Handle Print Bill - Show preview modal
+  const handlePrintBill = () => {
+    if (!selectedOrder) return
+    setShowBillPreview(true)
+  }
+
+  // Build receipt HTML for printing
+  const buildPrintHTML = (order, restaurantSettings) => {
+    const paperSizePx = defaultPaperSize === '58mm' ? 232
+      : defaultPaperSize === '50mm' ? 200 : 320
+    
+    const subtotal = (order?.items || []).reduce((sum, item) =>
+      sum + ((parseFloat(item.price) || 0) * (parseInt(item.quantity) || 1)), 0);
+    const gstPct = parseFloat(order?.gstPercent) || 0;
+    const svcPct = parseFloat(order?.serviceChargePercent) || 0;
+    const discVal = parseFloat(order?.discount) || 0;
+    const gstAmt = Math.round(subtotal * gstPct / 100);
+    const svcAmt = Math.round(subtotal * svcPct / 100);
+    const discAmt = order?.discountType === 'percentage'
+      ? Math.round(subtotal * discVal / 100) : discVal;
+    const total = subtotal + gstAmt + svcAmt - discAmt;
+
+    return `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="UTF-8">
+        <style>
+          * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+          }
+          body {
+            width: ${paperSizePx}px;
+            background: white;
+            color: black;
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 12px;
+            line-height: 1.6;
+            padding: 16px;
+          }
+          .receipt-section { margin-bottom: 8px; }
+          .header { text-align: center; font-weight: bold; font-size: 14px; margin-bottom: 4px; }
+          .subtitle { text-align: center; font-size: 11px; }
+          .divider { border-top: 1px dashed black; margin: 6px 0; }
+          .divider-solid { border-top: 1px solid black; margin: 6px 0; }
+          .row { display: flex; justify-content: space-between; margin-bottom: 2px; }
+          .item-row { display: flex; justify-content: space-between; gap: 8px; }
+          .item-name { flex: 1; }
+          .item-qty { width: 30px; text-align: center; }
+          .item-amount { width: 60px; text-align: right; }
+          .total-row { font-weight: bold; font-size: 14px; }
+          .footer { text-align: center; font-size: 11px; margin-top: 8px; }
+        </style>
+      </head>
+      <body>
+        <div class="header">${restaurantSettings?.restaurantName || restaurantSettings?.name || 'Restaurant'}</div>
+        ${restaurantSettings?.address ? `<div class="subtitle">${restaurantSettings.address}</div>` : ''}
+        ${restaurantSettings?.gstNumber ? `<div class="subtitle">GSTIN: ${restaurantSettings.gstNumber}</div>` : ''}
+        
+        <div class="divider"></div>
+        
+        <div class="receipt-section">
+          <div class="row"><span>Order: #${String(order?.id || '').substring(0, 8)}</span><span>Table: ${order?.tableName || 'N/A'}</span></div>
+          <div>Date: ${new Date().toLocaleDateString('en-IN')}</div>
+          ${order?.staffName ? `<div>Staff: ${order.staffName}</div>` : ''}
+        </div>
+        
+        <div class="divider"></div>
+        
+        <div class="receipt-section">
+          <div class="row" style="font-weight: bold;">
+            <span style="flex: 1;">Item</span>
+            <span style="width: 30px; text-align: center;">Qty</span>
+            <span style="width: 60px; text-align: right;">Amount</span>
+          </div>
+          <div class="divider"></div>
+          ${(order?.items || []).map(item => {
+            const itemTotal = (parseFloat(item.price) || 0) * (parseInt(item.quantity) || 1);
+            return `
+              <div class="item-row">
+                <span class="item-name">${item.name}</span>
+                <span class="item-qty">${item.quantity}x</span>
+                <span class="item-amount">₹${itemTotal}</span>
+              </div>
+            `;
+          }).join('')}
+        </div>
+        
+        <div class="divider"></div>
+        
+        <div class="receipt-section">
+          <div class="row"><span>Subtotal</span><span>₹${subtotal}</span></div>
+          ${gstPct > 0 ? `<div class="row"><span>GST (${gstPct}%)</span><span>₹${gstAmt}</span></div>` : ''}
+          ${svcPct > 0 ? `<div class="row"><span>Service (${svcPct}%)</span><span>₹${svcAmt}</span></div>` : ''}
+          ${discAmt > 0 ? `<div class="row"><span>Discount</span><span>-₹${discAmt}</span></div>` : ''}
+          <div class="divider-solid"></div>
+          <div class="row total-row"><span>TOTAL</span><span>₹${total}</span></div>
+          <div class="row" style="margin-top: 4px;"><span>Payment</span><span>${order?.paymentMethod || 'Cash'}</span></div>
+          <div class="divider"></div>
+          <div class="footer">${restaurantSettings?.thankYouMessage || 'Thank you for dining with us!'}</div>
+          <div class="footer">Please visit again</div>
+        </div>
+      </body>
+      </html>
+    `;
+  }
+
+  // Handle Confirm & Print from modal
+  const handleConfirmPrint = async (order, restaurantSettings, paperSize) => {
+    const htmlContent = buildPrintHTML(order, restaurantSettings || restaurant || {});
+    
+    if (typeof window !== 'undefined' && window.electronAPI?.isElectron) {
+      // In Electron: use IPC to print to PDF
+      try {
+        const result = await window.electronAPI.printToPDF(htmlContent, paperSize)
+        if (result.success) {
+          toast.success('✓ Bill sent to printer')
+        } else {
+          toast.error('Print failed: ' + (result.error || 'Unknown error'))
+        }
+      } catch (error) {
+        console.error('Electron print failed:', error)
+        toast.error('Print failed')
+      }
+    } else {
+      // In browser: use iframe fallback
+      printReceipt(htmlContent, paperSize)
+      toast.success('✓ Bill printed')
+    }
+  }
+
   const getStatusColor = (status) => {
     switch (status) {
       case 'pending': return 'bg-amber-900/30 text-amber-200'
@@ -562,11 +741,30 @@ export default function PosBillingPage() {
     <div className="min-h-screen bg-black text-white">
       {/* Header */}
       <header className="sticky top-0 z-40 bg-gray-900 border-b border-gray-800 px-4 md:px-6 py-4">
-        <div className="flex items-center justify-between">
-          <h1 className="text-2xl md:text-3xl font-bold text-amber-500">POS Billing</h1>
+        <div className="flex items-center justify-between gap-4">
+          <div className="flex-1">
+            {/* Breadcrumb */}
+            <div className="flex items-center gap-2 text-sm text-gray-400 mb-3">
+              <Link href="/admin" className="hover:text-amber-400 transition-colors">
+                Dashboard
+              </Link>
+              <span className="text-gray-600">›</span>
+              <span className="text-white font-medium">POS Billing</span>
+            </div>
+            <h1 className="text-2xl md:text-3xl font-bold text-amber-500">POS Billing</h1>
+            {/* Printer Status Badge - Electron only */}
+            {typeof window !== 'undefined' && window.electronAPI?.isElectron && (
+              <div className="flex items-center gap-2 mt-2 text-xs">
+                <span className={printerStatus.isOnline ? '🟢' : '🔴'}></span>
+                <span className="text-gray-300">
+                  {printerStatus.name} · {printerStatus.paperSize}
+                </span>
+              </div>
+            )}
+          </div>
           <button
             onClick={() => setCreateBillModalOpen(true)}
-            className="bg-amber-500 hover:bg-amber-600 text-black font-semibold px-4 py-2 rounded-lg transition text-sm md:text-base"
+            className="bg-amber-500 hover:bg-amber-600 text-black font-semibold px-4 py-2 rounded-lg transition text-sm md:text-base flex-shrink-0"
           >
             + Create Bill
           </button>
@@ -623,17 +821,51 @@ export default function PosBillingPage() {
                 filteredOrders.map(order => (
                   <div
                     key={order.id}
-                    onClick={() => setSelectedOrderId(order.id)}
-                    className={`p-4 rounded-xl cursor-pointer transition border-2 ${
+                    className={`p-4 rounded-xl transition border-2 cursor-pointer relative ${
                       selectedOrderId === order.id
                         ? "bg-amber-500/20 border-amber-500"
                         : "bg-gray-800 border-gray-800 hover:border-amber-500/50"
                     }`}
                   >
                     <div className="flex items-center justify-between mb-2">
-                      <span className="font-mono font-bold text-amber-500">#{order.id?.slice(-6).toUpperCase()}</span>
-                      <span className="text-xs text-gray-400">T{order.tableNumber}</span>
+                      <span 
+                        onDoubleClick={() => setSelectedOrderId(order.id)}
+                        className="font-mono font-bold text-amber-500 flex-1 cursor-pointer hover:text-amber-400"
+                      >
+                        #{order.id?.slice(-6).toUpperCase()}
+                      </span>
+                      <span className="text-xs text-gray-400 mr-2">T{order.tableNumber}</span>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          setDeleteConfirmId(deleteConfirmId === order.id ? null : order.id)
+                        }}
+                        className="text-red-400 hover:text-red-300 text-lg leading-none"
+                      >
+                        🗑️
+                      </button>
                     </div>
+
+                    {deleteConfirmId === order.id && (
+                      <div className="mb-3 p-2 bg-red-900/30 border border-red-500/30 rounded text-sm">
+                        <p className="text-red-200 mb-2 text-xs">Delete this order?</p>
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() => handleDeleteOrder(order.id)}
+                            className="flex-1 bg-red-600 hover:bg-red-700 text-white text-xs font-semibold py-1 rounded transition"
+                          >
+                            Yes, delete
+                          </button>
+                          <button
+                            onClick={() => setDeleteConfirmId(null)}
+                            className="flex-1 bg-gray-700 hover:bg-gray-600 text-white text-xs font-semibold py-1 rounded transition"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
                     <div className="text-xs text-gray-400 mb-2">{order.items?.length || 0} items</div>
                     <div className="flex gap-2 flex-wrap mb-3">
                       <span className={`text-xs px-2 py-1 rounded-full ${getStatusColor(order.status)}`}>
@@ -643,7 +875,12 @@ export default function PosBillingPage() {
                         {order.paymentStatus}
                       </span>
                     </div>
-                    <div className="text-right text-amber-500 font-bold">₹{Number(order.total || 0).toFixed(0)}</div>
+                    <div 
+                      onClick={() => setSelectedOrderId(order.id)}
+                      className="text-right text-amber-500 font-bold cursor-pointer"
+                    >
+                      ₹{Number(order.total || 0).toFixed(0)}
+                    </div>
                   </div>
                 ))
               )}
@@ -654,7 +891,16 @@ export default function PosBillingPage() {
         {/* Right Panel: Order Details */}
         <div className={`md:w-[65%] flex flex-col ${!selectedOrderId ? "hidden md:flex" : "flex"}`}>
           {selectedOrder ? (
-            <div className="bg-gray-900 rounded-xl border border-gray-800 p-4 md:p-6 flex flex-col h-full overflow-y-auto">
+            <div className="bg-gray-900 rounded-xl border border-gray-800 p-4 md:p-6 flex flex-col h-full overflow-y-auto relative">
+              {/* Close Button - Top Right */}
+              <button
+                onClick={() => setSelectedOrderId(null)}
+                className="absolute top-4 right-4 w-8 h-8 rounded-full bg-gray-700 hover:bg-gray-600 text-gray-300 hover:text-white flex items-center justify-center text-sm transition"
+                title="Close order details"
+              >
+                ✕
+              </button>
+
               {/* Back Button on Mobile */}
               <button
                 onClick={() => setSelectedOrderId(null)}
@@ -839,12 +1085,23 @@ export default function PosBillingPage() {
               </div>
 
               {/* Print Button */}
-              <button
-                onClick={() => printBill(selectedOrder, restaurant || { name: "Restaurant" })}
-                className="w-full bg-amber-500 hover:bg-amber-600 text-black font-semibold py-3 rounded-lg transition flex items-center justify-center gap-2 text-sm md:text-base"
-              >
-                🖨️ Print Bill (80mm)
-              </button>
+              <div className="space-y-2">
+                <p className="text-xs text-gray-500">Paper: {defaultPaperSize}</p>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    onClick={handlePrintBill}
+                    className="w-full bg-amber-500 hover:bg-amber-600 text-black font-semibold py-3 rounded-lg transition flex items-center justify-center gap-2 text-sm"
+                  >
+                    🖨️ Print Bill
+                  </button>
+                  <button
+                    onClick={() => printKOT(selectedOrder, defaultPaperSize)}
+                    className="w-full border border-amber-500 text-amber-500 hover:bg-amber-500 hover:text-black font-semibold py-3 rounded-lg transition flex items-center justify-center gap-2 text-sm"
+                  >
+                    🍳 KOT
+                  </button>
+                </div>
+              </div>
             </div>
           ) : (
             <div className="bg-gray-900 rounded-xl border border-gray-800 p-6 flex items-center justify-center h-full hidden md:flex">
@@ -1108,6 +1365,16 @@ export default function PosBillingPage() {
           </div>
         </div>
       )}
+
+      {/* Bill Preview Modal */}
+      <BillPreviewModal
+        isOpen={showBillPreview}
+        selectedOrder={selectedOrder}
+        restaurantSettings={restaurant}
+        paperSize={defaultPaperSize}
+        onClose={() => setShowBillPreview(false)}
+        onConfirmPrint={handleConfirmPrint}
+      />
     </div>
   )
 }
