@@ -16,9 +16,40 @@ function useDebounce(callback, delay) {
   }
 }
 
+function getBillDetails(order, updates = {}) {
+  const mergedOrder = { ...(order || {}), ...updates }
+  const items = mergedOrder.items || []
+  const totalAmount = items.reduce((sum, item) =>
+    sum + Number(item.price || 0) * Number(item.quantity || 0), 0)
+  const gstPercent = Number(mergedOrder.gstPercent ?? 5)
+  const serviceChargePercent = Number(mergedOrder.serviceChargePercent || 0)
+  const discountType = mergedOrder.discountType || 'flat'
+  const discount = Number(mergedOrder.discount || 0)
+  const tax = Math.round(totalAmount * (gstPercent / 100))
+  const serviceCharge = Math.round(totalAmount * (serviceChargePercent / 100))
+  const discountAmount = discountType === 'percentage'
+    ? Math.round(totalAmount * (discount / 100))
+    : discount
+  const finalAmount = totalAmount + tax + serviceCharge - discountAmount
+
+  return {
+    items,
+    totalAmount,
+    tax,
+    discount,
+    discountType,
+    finalAmount,
+    serviceCharge,
+    gstPercent,
+    serviceChargePercent,
+    paymentMethod: mergedOrder.paymentMethod || 'cash',
+  }
+}
+
 // Bill Preview Modal Component
-function BillPreviewModal({ isOpen, selectedOrder, restaurantSettings, paperSize, onClose, onConfirmPrint }) {
+function BillPreviewModal({ isOpen, selectedOrder, restaurantSettings, paperSize, onClose, onConfirmPrint, onSaveDetails }) {
   const [isPrinting, setIsPrinting] = useState(false)
+  const [isSaving, setIsSaving] = useState(false)
 
   if (!isOpen) return null
 
@@ -40,6 +71,19 @@ function BillPreviewModal({ isOpen, selectedOrder, restaurantSettings, paperSize
     }
   }
 
+  const handleSaveDetails = async () => {
+    setIsSaving(true)
+    try {
+      await onSaveDetails(selectedOrder)
+      toast.success('Bill updated successfully')
+    } catch (error) {
+      console.error('Bill update failed:', error)
+      toast.error('Bill update failed: ' + (error.message || 'Unknown error'))
+    } finally {
+      setIsSaving(false)
+    }
+  }
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
       <div className="bg-white rounded-lg shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-hidden flex flex-col">
@@ -48,7 +92,7 @@ function BillPreviewModal({ isOpen, selectedOrder, restaurantSettings, paperSize
           <h3 className="text-lg font-semibold">Bill Preview</h3>
           <button
             onClick={onClose}
-            disabled={isPrinting}
+            disabled={isPrinting || isSaving}
             className="text-gray-400 hover:text-white text-2xl leading-none transition disabled:opacity-50"
           >
             ✕
@@ -174,14 +218,21 @@ function BillPreviewModal({ isOpen, selectedOrder, restaurantSettings, paperSize
         <div className="bg-gray-900 border-t border-gray-800 p-4 flex gap-2">
           <button
             onClick={onClose}
-            disabled={isPrinting}
+            disabled={isPrinting || isSaving}
             className="flex-1 bg-gray-700 hover:bg-gray-600 disabled:bg-gray-600 text-white font-semibold px-4 py-3 rounded-lg transition disabled:opacity-50"
           >
             ← Back
           </button>
           <button
+            onClick={handleSaveDetails}
+            disabled={isPrinting || isSaving}
+            className="flex-1 bg-gray-700 hover:bg-gray-600 disabled:bg-gray-600 text-white font-semibold px-4 py-3 rounded-lg transition disabled:opacity-50"
+          >
+            Save Details
+          </button>
+          <button
             onClick={handlePrint}
-            disabled={isPrinting}
+            disabled={isPrinting || isSaving}
             className="flex-1 bg-amber-500 hover:bg-amber-600 disabled:bg-amber-600 text-black font-semibold px-4 py-3 rounded-lg transition flex items-center justify-center gap-2 disabled:opacity-50"
           >
             {isPrinting ? (
@@ -202,7 +253,7 @@ function BillPreviewModal({ isOpen, selectedOrder, restaurantSettings, paperSize
 }
 
 // BillCalculations Component
-function BillCalculations({ order, restaurantId, orderId, onUpdate }) {
+function BillCalculations({ order, restaurantId, orderId, onUpdate, onLocalUpdate }) {
   const [gstPercent, setGstPercent] = useState(Number(order.gstPercent || 5))
   const [serviceChargePercent, setServiceChargePercent] = useState(Number(order.serviceChargePercent || 0))
   const [discountType, setDiscountType] = useState(order.discountType || 'flat')
@@ -218,20 +269,20 @@ function BillCalculations({ order, restaurantId, orderId, onUpdate }) {
 
   // Debounce Firestore updates
   const debounceUpdate = useRef(null)
+  const pendingUpdates = useRef({})
   const saveChanges = (updates) => {
+    pendingUpdates.current = {
+      ...pendingUpdates.current,
+      ...updates,
+    }
+    onLocalUpdate?.(updates)
     clearTimeout(debounceUpdate.current)
     debounceUpdate.current = setTimeout(() => {
-      onUpdate(updates)
+      const updatesToSave = pendingUpdates.current
+      pendingUpdates.current = {}
+      onUpdate(updatesToSave)
     }, 500)
   }
-
-  useEffect(() => {
-    setGstPercent(Number(order.gstPercent || 5))
-    setServiceChargePercent(Number(order.serviceChargePercent || 0))
-    setDiscountType(order.discountType || 'flat')
-    setDiscountValue(Number(order.discount || 0))
-    setPaymentMethod(order.paymentMethod || 'cash')
-  }, [order.id])
 
   return (
     <div className="bg-gray-900 rounded-xl p-4 space-y-1">
@@ -335,6 +386,7 @@ export default function PosBillingPage() {
   
   // Orders data
   const [orders, setOrders] = useState([])
+  const ordersRef = useRef([])
   const [selectedOrderId, setSelectedOrderId] = useState(null)
   const [statusFilter, setStatusFilter] = useState('all')
   const [paymentFilter, setPaymentFilter] = useState('all')
@@ -374,6 +426,10 @@ export default function PosBillingPage() {
     })
     return () => unsub?.()
   }, [restaurantId])
+
+  useEffect(() => {
+    ordersRef.current = orders
+  }, [orders])
 
   // Subscribe to menu
   useEffect(() => {
@@ -460,6 +516,47 @@ export default function PosBillingPage() {
   const selectedOrder = useMemo(() => {
     return orders.find(o => o.id === selectedOrderId)
   }, [orders, selectedOrderId])
+
+  const syncOrderBillDetails = (orderId, updates = {}) => {
+    setOrders(prevOrders => {
+      const nextOrders = prevOrders.map(order => {
+        if (order.id !== orderId) return order
+        return {
+          ...order,
+          ...getBillDetails(order, updates),
+        }
+      })
+      ordersRef.current = nextOrders
+      return nextOrders
+    })
+  }
+
+  const handleSaveBillDetails = async (order = selectedOrder, updates = {}, options = {}) => {
+    if (!restaurantId || !order?.id) return order
+
+    const latestOrder = ordersRef.current.find(currentOrder => currentOrder.id === order.id) || order
+    const billDetails = getBillDetails(latestOrder, updates)
+    const updatedOrder = {
+      ...latestOrder,
+      ...billDetails,
+    }
+
+    syncOrderBillDetails(latestOrder.id, updates)
+
+    try {
+      await updateOrderBillDetails(restaurantId, latestOrder.id, billDetails)
+      if (options.showSuccess) {
+        toast.success('Bill updated successfully')
+      }
+      return updatedOrder
+    } catch (error) {
+      console.error('Failed to update bill details:', error)
+      if (options.showError !== false) {
+        toast.error('Failed to update bill details')
+      }
+      throw error
+    }
+  }
 
   // Filter menu items by search
   const filteredMenuItems = useMemo(() => {
@@ -700,7 +797,8 @@ export default function PosBillingPage() {
 
   // Handle Confirm & Print from modal
   const handleConfirmPrint = async (order, restaurantSettings, paperSize) => {
-    const htmlContent = buildPrintHTML(order, restaurantSettings || restaurant || {});
+    const updatedOrder = await handleSaveBillDetails(order)
+    const htmlContent = buildPrintHTML(updatedOrder, restaurantSettings || restaurant || {});
     
     if (typeof window !== 'undefined' && window.electronAPI?.isElectron) {
       // In Electron: use IPC to print to PDF
@@ -942,7 +1040,7 @@ export default function PosBillingPage() {
                               const updatedItems = [...selectedOrder.items]
                               if (updatedItems[idx].quantity > 1) {
                                 updatedItems[idx].quantity -= 1
-                                updateOrderBillDetails(restaurantId, selectedOrderId, { items: updatedItems })
+                                handleSaveBillDetails(selectedOrder, { items: updatedItems })
                               }
                             }}
                             className="bg-gray-700 hover:bg-gray-600 text-white px-2 py-1 rounded text-xs font-medium transition"
@@ -954,7 +1052,7 @@ export default function PosBillingPage() {
                             onClick={() => {
                               const updatedItems = [...selectedOrder.items]
                               updatedItems[idx].quantity += 1
-                              updateOrderBillDetails(restaurantId, selectedOrderId, { items: updatedItems })
+                              handleSaveBillDetails(selectedOrder, { items: updatedItems })
                             }}
                             className="bg-gray-700 hover:bg-gray-600 text-white px-2 py-1 rounded text-xs font-medium transition"
                           >
@@ -965,7 +1063,7 @@ export default function PosBillingPage() {
                         <button
                           onClick={() => {
                             const updatedItems = selectedOrder.items.filter((_, i) => i !== idx)
-                            updateOrderBillDetails(restaurantId, selectedOrderId, { items: updatedItems })
+                            handleSaveBillDetails(selectedOrder, { items: updatedItems })
                             toast.success('Item removed')
                           }}
                           className="text-red-400 hover:text-red-300 ml-2 transition"
@@ -990,10 +1088,12 @@ export default function PosBillingPage() {
               {/* Calculations Section */}
               <div className="border-b border-gray-800 pb-4 mb-4">
                 <BillCalculations 
+                  key={selectedOrder.id}
                   order={selectedOrder}
                   restaurantId={restaurantId}
                   orderId={selectedOrderId}
-                  onUpdate={(updates) => updateOrderBillDetails(restaurantId, selectedOrderId, updates)}
+                  onLocalUpdate={(updates) => syncOrderBillDetails(selectedOrderId, updates)}
+                  onUpdate={(updates) => handleSaveBillDetails(selectedOrder, updates)}
                 />
               </div>
 
@@ -1007,7 +1107,7 @@ export default function PosBillingPage() {
                     {['Cash', 'Card', 'UPI'].map(method => (
                       <button
                         key={method}
-                        onClick={() => updateOrderBillDetails(restaurantId, selectedOrderId, { paymentMethod: method })}
+                        onClick={() => handleSaveBillDetails(selectedOrder, { paymentMethod: method })}
                         className={`px-3 py-2 rounded-lg text-sm font-medium transition border ${
                           selectedOrder.paymentMethod === method
                             ? 'bg-amber-500 border-amber-500 text-black'
@@ -1310,7 +1410,7 @@ export default function PosBillingPage() {
                             price: Number(item.price || 0),
                             quantity: addItemQuantity
                           }]
-                          updateOrderBillDetails(restaurantId, selectedOrderId, { items: updatedItems })
+                          handleSaveBillDetails(selectedOrder, { items: updatedItems })
                           toast.success('Item added to bill')
                           setAddItemModalOpen(false)
                           setAddItemSearch('')
@@ -1374,6 +1474,7 @@ export default function PosBillingPage() {
         paperSize={defaultPaperSize}
         onClose={() => setShowBillPreview(false)}
         onConfirmPrint={handleConfirmPrint}
+        onSaveDetails={(order) => handleSaveBillDetails(order, {}, { showError: false })}
       />
     </div>
   )
