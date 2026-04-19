@@ -11,7 +11,12 @@
     "lint": "eslint",
     "electron": "electron .",
     "start-all": "concurrently \"npm run dev\" \"wait-on http://localhost:3000 && electron .\"",
-    "dist": "next build && electron-builder"
+    "electron-dev": "concurrently \"npm run dev\" \"wait-on http://localhost:3000 && electron .\"",
+    "dist": "npm run build && electron-builder --publish never",
+    "dist:win": "npm run build && electron-builder --win --publish never",
+    "dist:win-portable": "npm run build && electron-builder --win portable --publish never",
+    "pack": "electron-builder --dir",
+    "postinstall": "electron-builder install-app-deps"
   },
   "dependencies": {
     "@vercel/speed-insights": "^2.0.0",
@@ -31,7 +36,7 @@
     "@tailwindcss/postcss": "^4",
     "concurrently": "^9.2.1",
     "electron": "^41.2.1",
-    "electron-builder": "^26.8.1",
+    "electron-builder": "^24.9.1",
     "eslint": "^9",
     "eslint-config-next": "16.2.3",
     "tailwindcss": "^4",
@@ -41,26 +46,49 @@
   "build": {
     "appId": "com.dineboss.app",
     "productName": "DineBoss",
+    "artifactName": "DineBoss-Setup.exe",
     "copyright": "© Kalinga Aerospace Private Limited",
+    "publish": null,
     "directories": {
       "output": "dist",
       "buildResources": "public"
-    },
-    "win": {
-      "target": "nsis",
-      "icon": "public/favicon.ico",
-      "artifactName": "DineBoss-Setup.exe"
-    },
-    "nsis": {
-      "oneClick": true,
-      "perMachine": false,
-      "allowToChangeInstallationDirectory": false
     },
     "files": [
       "out/**/*",
       "electron/**/*",
       "node_modules/**/*",
       "package.json"
-    ]
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64",
+            "ia32"
+          ]
+        }
+      ],
+      "icon": "public/favicon.ico"
+    },
+    "nsis": {
+      "oneClick": true,
+      "allowToChangeInstallationDirectory": false,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "DineBoss",
+      "deleteAppDataOnUninstall": false,
+      "installerIcon": "public/favicon.ico",
+      "uninstallerIcon": "public/favicon.ico",
+      "installerHeaderIcon": "public/favicon.ico",
+      "allowElevation": true,
+      "perMachine": false,
+      "runAfterFinish": true,
+      "unicode": true,
+      "differentialPackage": true
+    },
+    "portable": {
+      "artifactName": "DineBoss-Portable.exe"
+    }
   }
 }

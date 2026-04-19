@@ -93,6 +93,27 @@ export default function LandingPage() {
     }
   };
 
+  // Download DineBoss installer
+  const downloadDineBoss = async () => {
+    try {
+      const response = await fetch('/api/download/dineboss');
+      if (!response.ok) throw new Error('Download failed');
+      
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'DineBoss-Complete.zip';
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+    } catch (error) {
+      alert('Failed to download DineBoss. Please try again.');
+      console.error('Download error:', error);
+    }
+  };
+
   const faqItems = [
     {
       q: 'Is there really a 3-month free trial?',
@@ -246,9 +267,9 @@ For legal inquiries: legal@dineboss.in
             <button onClick={() => setShowVideoModal(true)} className="border-2 border-[#F59E0B] text-[#F59E0B] px-8 py-4 rounded-lg font-semibold hover:bg-[#F59E0B]/10 transition">
               Watch Demo
             </button>
-            <a href="https://github.com/sujeetsamal/dineboss/releases/latest/download/DineBoss-Setup.exe" className="border-2 border-[#F59E0B] text-[#F59E0B] px-8 py-4 rounded-lg font-semibold hover:bg-[#F59E0B]/10 transition flex items-center justify-center gap-2" target="_blank" rel="noopener noreferrer">
+            <button onClick={downloadDineBoss} className="border-2 border-[#F59E0B] text-[#F59E0B] px-8 py-4 rounded-lg font-semibold hover:bg-[#F59E0B]/10 transition flex items-center justify-center gap-2">
               💻 Download for Windows
-            </a>
+            </button>
           </div>
 
           <div className="flex flex-col md:flex-row gap-4 justify-center text-sm text-[#C4B89A] mb-12">

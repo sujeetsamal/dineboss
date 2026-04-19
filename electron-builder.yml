@@ -1,0 +1,35 @@
+appId: com.dineboss.app
+productName: DineBoss
+artifactName: DineBoss-Setup.exe
+copyright: © Kalinga Aerospace Private Limited
+publish: null
+directories:
+  output: dist
+  buildResources: public
+files:
+  - out/**/*
+  - electron/**/*
+  - node_modules/**/*
+  - package.json
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+        - ia32
+  icon: public/favicon.ico
+nsis:
+  oneClick: true
+  allowToChangeInstallationDirectory: false
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: DineBoss
+  deleteAppDataOnUninstall: false
+  installerIcon: public/favicon.ico
+  uninstallerIcon: public/favicon.ico
+  installerHeaderIcon: public/favicon.ico
+  allowElevation: true
+  perMachine: false
+  runAfterFinish: true
+  unicode: true
+  differentialPackage: true

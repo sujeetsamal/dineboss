@@ -1,9 +1,16 @@
-const { app, BrowserWindow, ipcMain } = require('electron');
+const { app, BrowserWindow, ipcMain, Menu } = require('electron');
 const path = require('path');
 const isDev = process.env.NODE_ENV === 'development';
 
 let mainWindow;
 let splashWindow;
+
+// Ensure single instance
+const gotTheLock = app.requestSingleInstanceLock();
+if (!gotTheLock) {
+  app.quit();
+  process.exit(0);
+}
 
 function createSplashWindow() {
   splashWindow = new BrowserWindow({
@@ -87,6 +94,8 @@ function createWindow() {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
+      enableRemoteModule: false,
+      sandbox: true,
     },
     autoHideMenuBar: true,
     backgroundColor: '#0a0a0a',
@@ -101,29 +110,57 @@ function createWindow() {
     }
   });
 
-  // Allow all internal navigation
+  // Handle window closed
+  mainWindow.on('closed', () => {
+    mainWindow = null;
+  });
+
+  // Allow navigation only to trusted domains
   mainWindow.webContents.on('will-navigate', (event, url) => {
     const allowed = [
       'http://localhost:3000',
-      'https://dineboss.vercel.app'
+      'https://dineboss.vercel.app',
+      'https://*.dineboss.vercel.app',
     ];
-    const isAllowed = allowed.some(base => url.startsWith(base));
+    const isAllowed = allowed.some(base => {
+      if (base.includes('*')) {
+        const pattern = new RegExp('^' + base.replace('*', '.*'));
+        return pattern.test(url);
+      }
+      return url.startsWith(base);
+    });
     if (!isAllowed) {
       event.preventDefault();
     }
+  });
+
+  // Handle new window requests (open in external browser)
+  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    if (url.startsWith('http:') || url.startsWith('https:')) {
+      require('electron').shell.openExternal(url);
+    }
+    return { action: 'deny' };
   });
 
   // Load the login page directly
   const url = isDev
     ? 'http://localhost:3000/login'
     : 'https://dineboss.vercel.app/login';
-  mainWindow.loadURL(url);
+  
+  mainWindow.loadURL(url).catch(err => {
+    console.error('Failed to load URL:', err);
+    // Retry after 2 seconds
+    setTimeout(() => {
+      mainWindow.loadURL(url).catch(e => console.error('Retry failed:', e));
+    }, 2000);
+  });
 
   // Auto start with Windows (for production)
   if (!isDev) {
     app.setLoginItemSettings({
       openAtLogin: true,
       name: 'DineBoss',
+      path: app.getPath('exe'),
     });
   }
 
@@ -136,6 +173,16 @@ function createWindow() {
 app.whenReady().then(() => {
   createSplashWindow();
   createWindow();
+
+  // Handle second instance
+  app.on('second-instance', () => {
+    if (mainWindow) {
+      if (mainWindow.isMinimized()) mainWindow.restore();
+      mainWindow.focus();
+    } else {
+      createWindow();
+    }
+  });
 });
 
 app.on('window-all-closed', () => {
@@ -144,8 +191,14 @@ app.on('window-all-closed', () => {
 
 app.on('activate', () => {
   if (BrowserWindow.getAllWindows().length === 0) {
+    createSplashWindow();
     createWindow();
   }
+});
+
+// Handle any uncaught exceptions
+process.on('uncaughtException', (error) => {
+  console.error('Uncaught Exception:', error);
 });
 
 // ─── PRINT HANDLER (INVISIBLE WINDOW) ────────────────────────────────────
