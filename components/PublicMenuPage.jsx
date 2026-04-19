@@ -50,12 +50,10 @@ export default function PublicMenuPage({ restaurantId, restaurant, slug }) {
 
   async function fetchMenuItems() {
     try {
-      console.log('[PublicMenuPage] Fetching menu for restaurantId:', restaurantId);
       const collectionPath = `restaurants/${restaurantId}/menu`;
       
       // Try fetching with where clause first (filters out unavailable items)
       try {
-        console.log('[PublicMenuPage] Attempt 1: Query with available=true filter');
         const menuQuery = query(
           collection(db, collectionPath),
           where('available', '==', true),
@@ -73,14 +71,10 @@ export default function PublicMenuPage({ restaurantId, restaurant, slug }) {
           };
         });
         
-        console.log('[PublicMenuPage] ✓ Query successful - found', items.length, 'available items');
         setMenuItems(items);
         setQueryError(null);
       } catch (whereError) {
         // Fallback: fetch all items and filter in code
-        console.log('[PublicMenuPage] Attempt 1 failed:', whereError.message);
-        console.log('[PublicMenuPage] Attempt 2: Fallback - fetch all items and filter in code');
-        
         const allItemsQuery = query(
           collection(db, collectionPath),
           orderBy('name', 'asc')
@@ -100,7 +94,6 @@ export default function PublicMenuPage({ restaurantId, restaurant, slug }) {
           })
           .filter((item) => item.available !== false); // Show items that are available OR have undefined available status
         
-        console.log('[PublicMenuPage] ✓ Fallback query successful - found', items.length, 'items');
         setMenuItems(items);
         setQueryError(null);
       }
@@ -110,12 +103,6 @@ export default function PublicMenuPage({ restaurantId, restaurant, slug }) {
         code: error.code,
         restaurantId,
       });
-      
-      console.log('[PublicMenuPage] Troubleshooting:');
-      console.log('  - Verify restaurant ID is correct:', restaurantId);
-      console.log('  - Check Firestore security rules allow public read');
-      console.log('  - Verify menu collection exists at /restaurants/{id}/menu');
-      console.log('  - Check Firebase project is dineboss-prod');
       
       setQueryError(error.message);
       toast.error('Failed to load menu - ' + error.message);

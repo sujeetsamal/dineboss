@@ -38,12 +38,9 @@ export async function generateMetadata({ params }) {
 
 export default async function RestaurantRoutePage({ params }) {
   const { slug } = await params;
-  
-  console.log('\n=== [RESTAURANT PAGE] Loading restaurant for subdomain:', slug);
 
   try {
     // Look up restaurant by subdomain - simple and direct
-    console.log('[RESTAURANT PAGE] Querying restaurants for subdomain:', slug);
     const restaurant = await getRestaurantBySubdomain(slug);
 
     if (!restaurant) {
@@ -51,10 +48,7 @@ export default async function RestaurantRoutePage({ params }) {
       notFound();
     }
 
-    console.log('[RESTAURANT PAGE] ✓ Found restaurant:', restaurant.id, restaurant.name);
-
     const restaurantId = restaurant.id;
-    console.log('[RESTAURANT PAGE] Fetching full data for:', restaurantId);
     
     const fullRestaurant = await getRestaurant(restaurantId);
 
@@ -62,8 +56,6 @@ export default async function RestaurantRoutePage({ params }) {
       console.error('[RESTAURANT PAGE] ✗ Could not fetch restaurant data');
       notFound();
     }
-
-    console.log('[RESTAURANT PAGE] ✓ Restaurant loaded successfully');
 
     return (
       <PublicMenuPage 

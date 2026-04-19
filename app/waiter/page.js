@@ -140,7 +140,7 @@ export default function WaiterPage() {
   async function submitOrder() {
     if (!selectedTable || !restaurantId) return;
     if (cart.length === 0) {
-      window.alert("Cart empty");
+      toast.error("Cart empty");
       return;
     }
     setPlacing(true);

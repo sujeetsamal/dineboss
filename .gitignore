@@ -19,6 +19,11 @@
 
 # production
 /build
+/dist
+
+# Electron build output
+/dist/
+DineBoss-POS-Setup.exe
 
 # misc
 .DS_Store
@@ -29,9 +34,12 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
+debug.log
 
 # env files (can opt-in for committing if needed)
 .env*
+.env.local
+.env.*.local
 
 # vercel
 .vercel
@@ -39,5 +47,16 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
-# Added by code-review-graph
+
+# IDE
 .code-review-graph/
+.claude/
+.cursor/
+.kiro/
+.opencode.json
+.windsurfrules
+
+# OS generated files
+*.mp4
+videofordemo.mp4
+

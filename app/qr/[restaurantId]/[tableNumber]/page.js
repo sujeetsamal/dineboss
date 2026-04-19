@@ -144,7 +144,7 @@ export default function CustomerQrPage() {
     }
 
     if (cart.length === 0) {
-      window.alert("Cart empty");
+      toast.error("Cart empty");
       return;
     }
 
