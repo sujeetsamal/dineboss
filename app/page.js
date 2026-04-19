@@ -96,18 +96,8 @@ export default function LandingPage() {
   // Download DineBoss installer
   const downloadDineBoss = async () => {
     try {
-      const response = await fetch('/api/download/dineboss');
-      if (!response.ok) throw new Error('Download failed');
-      
-      const blob = await response.blob();
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = 'DineBoss-Complete.zip';
-      document.body.appendChild(a);
-      a.click();
-      window.URL.revokeObjectURL(url);
-      document.body.removeChild(a);
+      const url = 'https://github.com/sujeetsamal/dineboss/releases/download/v1.0.0/DineBoss-Complete.zip';
+      window.open(url, '_blank', 'noopener,noreferrer');
     } catch (error) {
       alert('Failed to download DineBoss. Please try again.');
       console.error('Download error:', error);
