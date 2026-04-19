@@ -3,14 +3,85 @@ const path = require('path');
 const isDev = process.env.NODE_ENV === 'development';
 
 let mainWindow;
+let splashWindow;
+
+function createSplashWindow() {
+  splashWindow = new BrowserWindow({
+    width: 400,
+    height: 300,
+    frame: false,
+    transparent: true,
+    alwaysOnTop: true,
+    webPreferences: {
+      contextIsolation: true,
+      nodeIntegration: false,
+    },
+  });
+
+  const splashHtml = `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <style>
+        * { margin: 0; padding: 0; }
+        body {
+          display: flex;
+          justify-content: center;
+          align-items: center;
+          height: 100vh;
+          background: linear-gradient(135deg, #0a0a0a 0%, #1a1a1a 100%);
+          font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        }
+        .container {
+          text-align: center;
+        }
+        .logo {
+          font-size: 48px;
+          margin-bottom: 20px;
+        }
+        .text {
+          color: #f59e0b;
+          font-size: 20px;
+          font-weight: 600;
+          letter-spacing: 1px;
+        }
+        .spinner {
+          margin-top: 30px;
+          width: 40px;
+          height: 40px;
+          margin-left: auto;
+          margin-right: auto;
+          border: 3px solid #f59e0b;
+          border-top: 3px solid transparent;
+          border-radius: 50%;
+          animation: spin 0.8s linear infinite;
+        }
+        @keyframes spin {
+          0% { transform: rotate(0deg); }
+          100% { transform: rotate(360deg); }
+        }
+      </style>
+    </head>
+    <body>
+      <div class="container">
+        <div class="logo">🍽️</div>
+        <div class="text">DineBoss</div>
+        <div class="spinner"></div>
+      </div>
+    </body>
+    </html>
+  `;
+
+  splashWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(splashHtml)}`);
+}
 
 function createWindow() {
   mainWindow = new BrowserWindow({
-    width: 1280,
+    width: 1200,
     height: 800,
     minWidth: 1024,
-    minHeight: 700,
-    title: 'DineBoss POS',
+    minHeight: 600,
+    title: 'DineBoss',
     icon: path.join(__dirname, '../public/favicon.ico'),
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
@@ -22,13 +93,15 @@ function createWindow() {
     show: false,
   });
 
-  // Start maximized for POS use
   mainWindow.once('ready-to-show', () => {
-    mainWindow.maximize();
     mainWindow.show();
+    if (splashWindow) {
+      splashWindow.destroy();
+      splashWindow = null;
+    }
   });
 
-  // Allow all internal navigation within localhost and dineboss.vercel.app
+  // Allow all internal navigation
   mainWindow.webContents.on('will-navigate', (event, url) => {
     const allowed = [
       'http://localhost:3000',
@@ -38,30 +111,32 @@ function createWindow() {
     if (!isAllowed) {
       event.preventDefault();
     }
-    // All internal routes pass through — never blocked
   });
 
-  // Load the app - use localhost for dev, hosted URL for production
+  // Load the login page directly
   const url = isDev
-    ? 'http://localhost:3000'
-    : 'https://dineboss.vercel.app';
+    ? 'http://localhost:3000/login'
+    : 'https://dineboss.vercel.app/login';
   mainWindow.loadURL(url);
 
   // Auto start with Windows (for production)
   if (!isDev) {
     app.setLoginItemSettings({
       openAtLogin: true,
-      name: 'DineBoss POS',
+      name: 'DineBoss',
     });
   }
 
-  // Open DevTools in development
+  // Open DevTools only in development
   if (isDev) {
     mainWindow.webContents.openDevTools();
   }
 }
 
-app.whenReady().then(createWindow);
+app.whenReady().then(() => {
+  createSplashWindow();
+  createWindow();
+});
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();

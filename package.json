@@ -9,8 +9,9 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "electron-dev": "concurrently \"npm run dev\" \"wait-on http://localhost:3000 && electron .\"",
-    "electron-build": "next build && electron-builder"
+    "electron": "electron .",
+    "start-all": "concurrently \"npm run dev\" \"wait-on http://localhost:3000 && electron .\"",
+    "dist": "next build && electron-builder"
   },
   "dependencies": {
     "@vercel/speed-insights": "^2.0.0",
@@ -38,16 +39,28 @@
     "webpack-cli": "^7.0.2"
   },
   "build": {
-    "appId": "com.dineboss.pos",
-    "productName": "DineBoss POS",
+    "appId": "com.dineboss.app",
+    "productName": "DineBoss",
+    "copyright": "© Kalinga Aerospace Private Limited",
     "directories": {
-      "output": "dist"
+      "output": "dist",
+      "buildResources": "public"
     },
     "win": {
-      "target": [
-        "portable"
-      ],
-      "icon": "public/favicon.ico"
-    }
+      "target": "nsis",
+      "icon": "public/favicon.ico",
+      "artifactName": "DineBoss-Setup.exe"
+    },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": false
+    },
+    "files": [
+      "out/**/*",
+      "electron/**/*",
+      "node_modules/**/*",
+      "package.json"
+    ]
   }
 }

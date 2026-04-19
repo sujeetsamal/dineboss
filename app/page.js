@@ -246,7 +246,7 @@ For legal inquiries: legal@dineboss.in
             <button onClick={() => setShowVideoModal(true)} className="border-2 border-[#F59E0B] text-[#F59E0B] px-8 py-4 rounded-lg font-semibold hover:bg-[#F59E0B]/10 transition">
               Watch Demo
             </button>
-            <a href="/downloads/DineBoss-POS-Setup.exe" download className="border-2 border-[#F59E0B] text-[#F59E0B] px-8 py-4 rounded-lg font-semibold hover:bg-[#F59E0B]/10 transition flex items-center justify-center gap-2">
+            <a href="https://github.com/sujeetsamal/dineboss/releases/latest/download/DineBoss-Setup.exe" className="border-2 border-[#F59E0B] text-[#F59E0B] px-8 py-4 rounded-lg font-semibold hover:bg-[#F59E0B]/10 transition flex items-center justify-center gap-2" target="_blank" rel="noopener noreferrer">
               💻 Download for Windows
             </a>
           </div>
