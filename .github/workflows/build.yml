@@ -1,0 +1,64 @@
+name: Build Electron Installer
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 'lts/*'
+          cache: 'npm'
+      
+      - name: Install dependencies
+        run: npm install
+      
+      - name: Build Next.js
+        run: npm run build
+      
+      - name: Build Electron installer
+        run: npm run dist
+        env:
+          CSC_LINK: ''
+          CSC_KEY_PASSWORD: ''
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      
+      - name: Verify installer exists
+        run: |
+          if (Test-Path "dist/DineBoss-Setup.exe") {
+            $size = (Get-Item "dist/DineBoss-Setup.exe").Length
+            Write-Host "Installer created: dist/DineBoss-Setup.exe ($([math]::Round($size/1MB, 1)) MB)"
+          } else {
+            throw "Installer file not found at dist/DineBoss-Setup.exe"
+          }
+      
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: v1.0.${{ github.run_number }}
+          name: DineBoss v1.0.${{ github.run_number }}
+          body: |
+            Automated build from GitHub Actions
+            
+            **Download:** DineBoss-Setup.exe
+            
+            Build: ${{ github.run_number }}
+            Commit: ${{ github.sha }}
+          files: dist/DineBoss-Setup.exe
+          draft: false
+          prerelease: false
+          fail_on_unmatched_files: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
