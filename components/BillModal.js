@@ -112,7 +112,7 @@ export default function BillModal({
         orderIds: bill.orderIds,
         tableNumber: bill.tableNumber,
         waiterName: bill.waiterName,
-        items: bill.items.map((item) => ({
+        items: (bill.items || []).map((item) => ({
           name: item.name,
           quantity: item.quantity,
           price: item.price,
@@ -213,7 +213,8 @@ export default function BillModal({
         </div>
 
         {/* Bill Content */}
-        <div id="bill-print-area" className="p-6 bg-white space-y-4">
+        {bill ? (
+          <div id="bill-print-area" className="p-6 bg-white space-y-4">
           
           {/* Restaurant Header */}
           <div className="text-center">
@@ -272,7 +273,7 @@ export default function BillModal({
             </div>
 
             {/* Items */}
-            {bill.items.map((item, i) => (
+            {bill?.items?.map((item, i) => (
               <div key={i} className="border-b border-gray-100 pb-2">
                 {isEditing ? (
                   <div className="space-y-2">
@@ -413,7 +414,6 @@ export default function BillModal({
           {restaurantDetails?.gstNumber && (
             <p className="text-xs text-gray-500 text-center">GST: {restaurantDetails.gstNumber}</p>
           )}
-        </div>
 
         {/* Action Buttons */}
         {!readOnly && (
@@ -438,6 +438,12 @@ export default function BillModal({
             >
               <Save size={18} /> {isSaving ? 'Saving...' : 'Generate Bill'}
             </button>
+          </div>
+        )}
+          </div>
+        ) : (
+          <div className="p-6 text-center text-gray-500">
+            <p>Loading bill details...</p>
           </div>
         )}
       </div>

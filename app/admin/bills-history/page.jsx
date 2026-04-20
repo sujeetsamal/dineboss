@@ -584,7 +584,7 @@ export default function BillsHistoryPage() {
                 {/* Items List */}
                 <div className="space-y-2 bg-bg-primary/30 rounded-lg p-3">
                   {(billDetail.items || []).length > 0 ? (
-                    billDetail.items.map((item, idx) => (
+                    (billDetail.items || []).map((item, idx) => (
                       <div key={idx} className="flex justify-between text-sm border-b border-border-theme pb-2 last:border-0">
                         <span className="text-text-secondary">{item.quantity}x {item.name}</span>
                         <span className="text-gold font-semibold">₹{((item.total || item.price) * item.quantity).toFixed(0)}</span>

@@ -4,7 +4,7 @@ import React, { useEffect, useMemo, useState, useRef } from 'react'
 import Link from 'next/link'
 import { subscribeToMenu, subscribeToOrders, subscribeToTables, subscribeToRestaurant, placeOrder, updateOrderStatus, updateOrderPaymentStatus, updateOrderBillDetails, deleteOrder } from '@/lib/firestore'
 import { useCurrentUser } from '@/hooks/useCurrentUser'
-import { toast } from 'react-hot-toast'
+import toast from 'react-hot-toast'
 import { printReceipt, buildReceiptHTML, printKOT } from '@/utils/printReceipt'
 
 // Debounce utility for Firestore writes
@@ -977,7 +977,7 @@ export default function PosBillingPage() {
                 <h3 className="text-lg font-semibold text-white mb-3">Items</h3>
                 <div className="space-y-2 max-h-[180px] overflow-y-auto mb-3">
                   {selectedOrder.items?.length > 0 ? (
-                    selectedOrder.items.map((item, idx) => (
+                    (selectedOrder.items || []).map((item, idx) => (
                       <div key={idx} className="flex items-center justify-between bg-gray-800 rounded-lg p-3 text-sm">
                         <div className="flex-1">
                           <p className="text-white font-medium">{item.name}</p>
@@ -1011,7 +1011,7 @@ export default function PosBillingPage() {
                         <span className="text-amber-500 font-semibold w-20 text-right">₹{Number((item.price || 0) * (item.quantity || 1)).toFixed(0)}</span>
                         <button
                           onClick={() => {
-                            const updatedItems = selectedOrder.items.filter((_, i) => i !== idx)
+                            const updatedItems = (selectedOrder.items || []).filter((_, i) => i !== idx)
                             handleSaveBillDetails(selectedOrder, { items: updatedItems })
                             toast.success('Item removed')
                           }}

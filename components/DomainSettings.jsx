@@ -104,7 +104,7 @@ export default function DomainSettings({ restaurantId, restaurantName }) {
         }));
         setVerificationStatus({ verified: true });
       } else if (response.status === 202) {
-        toast.info('Domain not ready yet. Please check your DNS records and try again in a few minutes.');
+        toast('Domain not ready yet. Please check your DNS records and try again in a few minutes.');
         setVerificationStatus({ verified: false, message: data.error });
       } else {
         toast.error(data.error || 'Verification failed');

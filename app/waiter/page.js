@@ -441,7 +441,7 @@ export default function WaiterPage() {
           </div>
           <div className="space-y-3">
             {filteredMenu.map((item) => (
-              <MenuItem key={item.id} item={item} quantity={0} onAdd={(i) => toast.info("Select table to add items")} onRemove={() => {}} />
+              <MenuItem key={item.id} item={item} quantity={0} onAdd={(i) => toast("Select table to add items")} onRemove={() => {}} />
             ))}
           </div>
         </section>

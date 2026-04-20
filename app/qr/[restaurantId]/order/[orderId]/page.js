@@ -5,6 +5,7 @@ import { useParams } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { Check, ChefHat, Circle, ClipboardCheck, Clock, XCircle } from "lucide-react";
 import { subscribeToOrder, subscribeToRestaurant } from "@/lib/firestore";
+import OrderStatusAnimation from "@/components/OrderStatusAnimation";
 
 const TIMELINE = [
   { status: "pending", label: "Order Placed", Icon: ClipboardCheck, activeClass: "border-green-500 bg-green-500/10 text-green-300" },
@@ -23,6 +24,8 @@ export default function CustomerOrderTrackingPage() {
   const orderId = String(params.orderId || "");
   const [order, setOrder] = useState(null);
   const [restaurantName, setRestaurantName] = useState("");
+  const [paymentQRUrl, setPaymentQRUrl] = useState("");
+  const [enableCustomerQRPayment, setEnableCustomerQRPayment] = useState(true);
   const [error, setError] = useState("");
   const [showSuccess, setShowSuccess] = useState(true);
 
@@ -35,7 +38,11 @@ export default function CustomerOrderTrackingPage() {
     if (!restaurantId) return undefined;
     const unsubscribe = subscribeToRestaurant(
       restaurantId,
-      (restaurant) => setRestaurantName(restaurant?.name || ""),
+      (restaurant) => {
+        setRestaurantName(restaurant?.name || "");
+        setPaymentQRUrl(restaurant?.paymentQRUrl || "");
+        setEnableCustomerQRPayment(restaurant?.enableCustomerQRPayment !== false);
+      },
       (err) => setError(err.message || "Unable to load restaurant")
     );
     return () => unsubscribe?.();
@@ -133,6 +140,14 @@ export default function CustomerOrderTrackingPage() {
           </motion.div>
         ) : (
           <section className="rounded-2xl border border-slate-700 bg-[#111c33] p-5">
+            {/* Animated Status Display */}
+            {order && (
+              <OrderStatusAnimation 
+                status={order.status} 
+                paymentQRUrl={enableCustomerQRPayment ? paymentQRUrl : null}
+              />
+            )}
+
             <div className="space-y-4">
               {TIMELINE.map((step, index) => {
                 const isComplete = index < currentIndex;

@@ -20,6 +20,8 @@ export default function SettingsPage() {
   const [selectedPrinter, setSelectedPrinter] = useState('default');
   const [isElectron, setIsElectron] = useState(false);
   const logoInputRef = useRef(null);
+  const paymentQRInputRef = useRef(null);
+  const [isUploadingPaymentQR, setIsUploadingPaymentQR] = useState(false);
 
   useEffect(() => {
     if (!restaurantId) return;
@@ -36,6 +38,7 @@ export default function SettingsPage() {
             defaultPaperSize: data.defaultPaperSize || '80mm',
             thankYouMessage: data.thankYouMessage || 'Thank you for dining with us!',
             requireCustomerDetails: false,
+            enableCustomerQRPayment: data.enableCustomerQRPayment !== false,
           });
         }
       })
@@ -129,6 +132,34 @@ export default function SettingsPage() {
     setSettings({ ...settings, logoUrl: null });
   }
 
+  async function handlePaymentQRUpload(e) {
+    const file = e.target.files?.[0];
+    if (!file || !restaurantId) return;
+
+    if (!file.type.startsWith('image/')) {
+      toast.error('Please select an image file');
+      return;
+    }
+
+    setIsUploadingPaymentQR(true);
+    try {
+      const storageRef = ref(storage, `restaurants/${restaurantId}/payment_qr`);
+      await uploadBytes(storageRef, file);
+      const paymentQRUrl = await getDownloadURL(storageRef);
+      setSettings({ ...settings, paymentQRUrl });
+      toast.success('Payment QR uploaded successfully');
+    } catch (err) {
+      toast.error('Failed to upload payment QR');
+      console.error(err);
+    } finally {
+      setIsUploadingPaymentQR(false);
+    }
+  }
+
+  function handleRemovePaymentQR() {
+    setSettings({ ...settings, paymentQRUrl: null });
+  }
+
   async function handleSave() {
     if (!restaurantId) return;
     if (!settings.name?.trim()) {
@@ -155,10 +186,12 @@ export default function SettingsPage() {
         showGstOnBill: settings.showGstOnBill,
         showLogoOnBill: settings.showLogoOnBill,
         logoUrl: settings.logoUrl || null,
+        paymentQRUrl: settings.paymentQRUrl || null,
         orderLimitPerDay: parseInt(settings.orderLimitPerDay) || 50,
         enableOrderSound: settings.enableOrderSound !== false,
         defaultPaperSize: settings.defaultPaperSize || '80mm',
         thankYouMessage: settings.thankYouMessage || 'Thank you for dining with us!',
+        enableCustomerQRPayment: settings.enableCustomerQRPayment !== false,
       });
       toast.success('Settings saved');
     } catch (err) {
@@ -527,7 +560,77 @@ export default function SettingsPage() {
           </p>
         </div>
 
-        {/* THERMAL PRINTER SETTINGS SECTION */}
+        {/* CUSTOMER PAYMENT QR SECTION */}
+        <div className="card space-y-5 p-6">
+          <h2 className="text-lg font-semibold text-gold">Customer Payment QR</h2>
+          <p className="text-sm text-text-secondary">
+            Upload a payment QR code (UPI/Google Pay/etc.) that will be shown to customers when their meal is served.
+          </p>
+
+          <div>
+            <label className="block text-sm font-medium text-text-secondary mb-3">Payment QR Code</label>
+            
+            <div className="flex flex-col gap-4">
+              {settings.paymentQRUrl && (
+                <div className="relative inline-block">
+                  <img
+                    src={settings.paymentQRUrl}
+                    alt="Payment QR code"
+                    className="h-40 w-40 object-cover rounded-lg border border-text-muted/30"
+                  />
+                  <button
+                    onClick={handleRemovePaymentQR}
+                    className="absolute top-1 right-1 p-1 bg-red-500 text-white rounded-full hover:bg-red-600 transition"
+                  >
+                    <X size={16} />
+                  </button>
+                </div>
+              )}
+
+              {!settings.paymentQRUrl && (
+                <div
+                  onClick={() => paymentQRInputRef.current?.click()}
+                  className="border-2 border-dashed border-text-muted/30 rounded-lg p-8 text-center cursor-pointer hover:border-gold/50 transition flex flex-col items-center justify-center"
+                >
+                  <Upload size={32} className="text-gold mb-2" />
+                  <p className="text-sm font-medium">Click to upload payment QR</p>
+                  <p className="text-xs text-text-muted">PNG, JPG up to 5MB</p>
+                </div>
+              )}
+
+              <input
+                ref={paymentQRInputRef}
+                type="file"
+                accept="image/*"
+                onChange={handlePaymentQRUpload}
+                disabled={isUploadingPaymentQR}
+                className="hidden"
+              />
+
+              {isUploadingPaymentQR && (
+                <div className="text-sm text-text-muted flex items-center gap-2">
+                  <div className="animate-spin h-4 w-4 border-2 border-gold border-t-transparent rounded-full" />
+                  Uploading...
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="flex items-center gap-4">
+            <label className="flex items-center cursor-pointer">
+              <input
+                type="checkbox"
+                checked={settings.enableCustomerQRPayment !== false}
+                onChange={(e) => setSettings({ ...settings, enableCustomerQRPayment: e.target.checked })}
+                className="w-4 h-4 rounded border-text-muted/30 text-gold"
+              />
+              <span className="ml-2 text-sm text-text-secondary">Show payment QR in order completion</span>
+            </label>
+          </div>
+          <p className="text-xs text-text-muted">
+            When enabled, customers will see the payment QR code when their order is completed.
+          </p>
+        </div>
         <div className="card space-y-5 p-6">
           <h2 className="text-lg font-semibold text-gold">Thermal Printer Settings</h2>
 
