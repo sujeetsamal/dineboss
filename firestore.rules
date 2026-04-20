@@ -50,7 +50,10 @@ service cloud.firestore {
     match /restaurants/{restaurantId} {
       allow read: if true;  // ✅ PUBLIC: Anyone can view restaurant
       allow create: if isAuth();  // ✅ FIXED: Authenticated can create (doesn't need user doc)
-      allow update, delete: if isAdmin(restaurantId);  // Only admin can modify
+      allow update: if isAdmin(restaurantId) || 
+                       (isStaff(restaurantId) && request.resource.data.diff(resource.data).affectedKeys()
+                         .hasOnly(['currentUsage', 'updatedAt']));  // ✅ Staff can only increment usage
+      allow delete: if isAdmin(restaurantId);  // Only admin can delete
       
       // *** NESTED: MENU ITEMS (PUBLIC READ) ***
       // QR codes need this - customers scan and see menu without login

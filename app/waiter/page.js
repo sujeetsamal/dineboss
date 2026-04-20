@@ -8,7 +8,7 @@ import { signOut } from "firebase/auth";
 import { useRouter } from "next/navigation";
 import MenuItem from "@/components/MenuItem";
 import TableCard from "@/components/TableCard";
-import { placeOrder, subscribeToMenu, subscribeToTables, subscribeToOrders, subscribeToRestaurant, updateOrderBillDetails } from "@/lib/firestore";
+import { placeOrder, subscribeToMenu, subscribeToTables, subscribeToOrders, subscribeToRestaurant, updateOrderBillDetails, updateOrderStatus } from "@/lib/firestore";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { auth } from "@/lib/firebase";
 import { getStartOfDay, getEndOfDay } from "@/lib/dateUtils";
@@ -40,6 +40,53 @@ export default function WaiterPage() {
   const [draftItems, setDraftItems] = useState([]);
   const [editMenuSearch, setEditMenuSearch] = useState("");
   const [savingChanges, setSavingChanges] = useState(false);
+  const [updatingOrderStatus, setUpdatingOrderStatus] = useState(null);
+  const [statusFilter, setStatusFilter] = useState("all"); // "all", "pending", "preparing", "served"
+  const [selectedOrdersForBulk, setSelectedOrdersForBulk] = useState(new Set());
+  const [bulkUpdating, setBulkUpdating] = useState(false);
+  const [showStatusHistory, setShowStatusHistory] = useState(null); // order ID to show history for
+
+  // Estimated prep times (in minutes)
+  const PREP_TIME_ESTIMATES = {
+    pending: { elapsed: 0, estimated: 0, message: "Not started" },
+    preparing: { elapsed: 0, estimated: 15, message: "Cooking" },
+    served: { elapsed: 0, estimated: 0, message: "Ready to serve" },
+    completed: { elapsed: 0, estimated: 0, message: "Completed" },
+  };
+
+  const STATUS_OPTIONS = [
+    { value: "pending", label: "Pending", color: "bg-orange-500/10 text-orange-300 border-orange-500/30" },
+    { value: "preparing", label: "Preparing", color: "bg-blue-500/10 text-blue-300 border-blue-500/30" },
+    { value: "served", label: "Served", color: "bg-green-500/10 text-green-300 border-green-500/30" },
+    { value: "completed", label: "Completed", color: "bg-purple-500/10 text-purple-300 border-purple-500/30" },
+  ];
+
+  const getStatusColor = (status) => {
+    const option = STATUS_OPTIONS.find(opt => opt.value === status || (status === "ordered" && opt.value === "pending"));
+    return option?.color || "bg-gray-500/10 text-gray-300 border-gray-500/30";
+  };
+
+  const getEstimatedPrepTime = (order) => {
+    const status = order.status || "pending";
+    if (!order.createdAt?.toDate) return PREP_TIME_ESTIMATES[status];
+    
+    const createdTime = order.createdAt.toDate().getTime();
+    const elapsedMins = Math.floor((Date.now() - createdTime) / 60000);
+    const estimate = PREP_TIME_ESTIMATES[status].estimated;
+    
+    return {
+      ...PREP_TIME_ESTIMATES[status],
+      elapsed: elapsedMins,
+      remaining: Math.max(0, estimate - elapsedMins),
+    };
+  };
+
+  const formatEstimatedTime = (order) => {
+    const prep = getEstimatedPrepTime(order);
+    if (prep.estimated === 0) return prep.message;
+    if (prep.remaining > 0) return `~${prep.remaining}min left`;
+    return `${prep.elapsed}min elapsed`;
+  };
 
   useEffect(() => {
     if (!restaurantId) return undefined;
@@ -93,6 +140,12 @@ export default function WaiterPage() {
       return orderDate >= startOfDay && orderDate <= endOfDay;
     });
   }, [orders, user?.uid]);
+
+  // Filtered orders with status filter
+  const filteredOrdersToday = useMemo(() => {
+    if (statusFilter === "all") return myOrdersToday;
+    return myOrdersToday.filter(o => (o.status || "pending") === statusFilter);
+  }, [myOrdersToday, statusFilter]);
 
   const occupiedTables = useMemo(() => tables.filter((t) => t.status === "occupied" || t.isOccupied).length, [tables]);
   const pendingOrders = useMemo(() => orders.filter((o) => o.status === "pending").length, [orders]);
@@ -243,6 +296,94 @@ export default function WaiterPage() {
     }
   }
 
+  async function handleOrderStatusUpdate(orderId, newStatus) {
+    if (!restaurantId) return;
+    setUpdatingOrderStatus(orderId);
+    try {
+      await updateOrderStatus(restaurantId, orderId, newStatus, {
+        uid: user?.uid,
+        name: profile?.displayName || user?.displayName || user?.email || "Waiter",
+      });
+      toast.success(`Order status updated to ${newStatus}`);
+    } catch (err) {
+      toast.error(err.message || "Could not update order status");
+    } finally {
+      setUpdatingOrderStatus(null);
+    }
+  }
+
+  async function handleBulkStatusUpdate(newStatus) {
+    if (selectedOrdersForBulk.size === 0) {
+      toast.error("Select at least one order");
+      return;
+    }
+    if (!restaurantId) return;
+    setBulkUpdating(true);
+    let successCount = 0;
+    let failCount = 0;
+
+    try {
+      for (const orderId of selectedOrdersForBulk) {
+        try {
+          await updateOrderStatus(restaurantId, orderId, newStatus, {
+            uid: user?.uid,
+            name: profile?.displayName || user?.displayName || user?.email || "Waiter",
+          });
+          successCount++;
+        } catch (err) {
+          failCount++;
+          console.warn(`Failed to update order ${orderId}:`, err.message);
+        }
+      }
+
+      if (successCount > 0) {
+        toast.success(`Updated ${successCount} order${successCount > 1 ? "s" : ""} to ${newStatus}`);
+        setSelectedOrdersForBulk(new Set());
+      }
+      if (failCount > 0) {
+        toast.error(`Failed to update ${failCount} order${failCount > 1 ? "s" : ""}`);
+      }
+    } finally {
+      setBulkUpdating(false);
+    }
+  }
+
+  function toggleOrderSelection(orderId) {
+    const newSelected = new Set(selectedOrdersForBulk);
+    if (newSelected.has(orderId)) {
+      newSelected.delete(orderId);
+    } else {
+      newSelected.add(orderId);
+    }
+    setSelectedOrdersForBulk(newSelected);
+  }
+
+  function toggleAllOrdersSelection() {
+    if (selectedOrdersForBulk.size === filteredOrdersToday.length) {
+      setSelectedOrdersForBulk(new Set());
+    } else {
+      setSelectedOrdersForBulk(new Set(filteredOrdersToday.map(o => o.id)));
+    }
+  }
+
+  function toggleOrderSelection(orderId) {
+    const newSelected = new Set(selectedOrdersForBulk);
+    if (newSelected.has(orderId)) {
+      newSelected.delete(orderId);
+    } else {
+      newSelected.add(orderId);
+    }
+    setSelectedOrdersForBulk(newSelected);
+  }
+
+  function toggleAllOrdersSelection() {
+    if (selectedOrdersForBulk.size === filteredOrdersToday.length) {
+      setSelectedOrdersForBulk(new Set());
+    } else {
+      setSelectedOrdersForBulk(new Set(filteredOrdersToday.map(o => o.id)));
+    }
+  }
+
   if (loading) {
     return (
       <main className="mx-auto min-h-screen w-full max-w-md flex items-center justify-center px-4 py-4">
@@ -385,24 +526,140 @@ export default function WaiterPage() {
       {activeTab === "myorders" && (
         <section>
           <h2 className="mb-4 font-display text-2xl">My Orders Today</h2>
+
+          {/* Status Filter Controls */}
+          {myOrdersToday.length > 0 && (
+            <div className="mb-4 flex gap-2 overflow-x-auto pb-2">
+              <button
+                onClick={() => setStatusFilter("all")}
+                className={`rounded-full border px-3 py-1 text-xs whitespace-nowrap font-semibold transition ${
+                  statusFilter === "all" 
+                    ? "border-gold bg-gold text-bg-primary" 
+                    : "border-border-theme text-text-secondary hover:border-gold"
+                }`}
+              >
+                All ({myOrdersToday.length})
+              </button>
+              {["pending", "preparing", "served"].map((status) => {
+                const count = myOrdersToday.filter(o => (o.status || "pending") === status).length;
+                return (
+                  <button
+                    key={status}
+                    onClick={() => setStatusFilter(status)}
+                    className={`rounded-full border px-3 py-1 text-xs whitespace-nowrap font-semibold transition ${
+                      statusFilter === status 
+                        ? "border-gold bg-gold text-bg-primary" 
+                        : "border-border-theme text-text-secondary hover:border-gold"
+                    }`}
+                  >
+                    {status.charAt(0).toUpperCase() + status.slice(1)} ({count})
+                  </button>
+                );
+              })}
+            </div>
+          )}
+
+          {/* Bulk Status Update Bar (only show when orders selected) */}
+          {selectedOrdersForBulk.size > 0 && filteredOrdersToday.length > 0 && (
+            <div className="mb-4 flex items-center justify-between gap-3 p-3 rounded-lg bg-bg-card border border-border-theme">
+              <span className="text-sm font-semibold text-gold">{selectedOrdersForBulk.size} selected</span>
+              <div className="flex gap-2">
+                {STATUS_OPTIONS.filter(opt => opt.value !== "pending").map(opt => (
+                  <button
+                    key={opt.value}
+                    onClick={() => handleBulkStatusUpdate(opt.value)}
+                    disabled={bulkUpdating}
+                    className={`text-xs font-semibold px-2 py-1 rounded border transition ${
+                      bulkUpdating ? "opacity-50 cursor-not-allowed" : `${opt.color} hover:opacity-80`
+                    }`}
+                  >
+                    {bulkUpdating ? "..." : `${opt.label}`}
+                  </button>
+                ))}
+                <button
+                  onClick={() => setSelectedOrdersForBulk(new Set())}
+                  className="text-xs font-semibold px-2 py-1 rounded border border-text-muted/30 text-text-muted hover:text-text-primary transition"
+                >
+                  Clear
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Orders List */}
           <div className="space-y-3">
-            {myOrdersToday.length > 0 ? (
-              myOrdersToday.map((order) => (
+            {filteredOrdersToday.length > 0 ? (
+              filteredOrdersToday.map((order) => (
                 <motion.div key={order.id} initial={{ x: -8, opacity: 0 }} animate={{ x: 0, opacity: 1 }}>
-                  <div className="card border-l-4 border-l-gold p-4">
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
+                  <div className={`card border-l-4 border-l-gold p-4 transition ${
+                    selectedOrdersForBulk.has(order.id) ? "ring-2 ring-gold bg-gold/5" : ""
+                  }`}>
+                    <div className="flex items-start justify-between gap-3 mb-3">
+                      {/* Checkbox for bulk selection */}
+                      <input
+                        type="checkbox"
+                        checked={selectedOrdersForBulk.has(order.id)}
+                        onChange={() => toggleOrderSelection(order.id)}
+                        className="w-5 h-5 rounded mt-0.5"
+                      />
+
+                      <div className="flex-1 min-w-0">
                         <p className="font-semibold">Table {order.tableNumber}</p>
-                        <p className="mt-1 text-xs text-text-muted capitalize">Status: {order.status || "pending"}</p>
+                        <div className="mt-2 flex items-center justify-between gap-2">
+                          <span className={`inline-block rounded-full border px-2.5 py-1 text-xs font-semibold ${getStatusColor(order.status || "pending")}`}>
+                            {(order.status || "pending").charAt(0).toUpperCase() + (order.status || "pending").slice(1)}
+                          </span>
+                          <span className="text-xs text-text-muted">{formatEstimatedTime(order)}</span>
+                        </div>
                       </div>
-                      <button
-                        type="button"
-                        onClick={() => startEditingOrder(order)}
-                        className="rounded-lg border border-gold px-3 py-2 text-xs font-semibold text-gold transition hover:bg-gold/10"
-                      >
-                        Edit Items
-                      </button>
+
+                      <div className="flex flex-col gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setShowStatusHistory(order.id)}
+                          className="rounded border border-text-muted/30 px-2 py-1 text-xs font-semibold text-text-secondary hover:bg-bg-card transition"
+                          title="View status history"
+                        >
+                          📋
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => startEditingOrder(order)}
+                          className="rounded-lg border border-gold px-2 py-1 text-xs font-semibold text-gold transition hover:bg-gold/10"
+                        >
+                          Edit
+                        </button>
+                      </div>
                     </div>
+
+                    {/* Status Update Controls */}
+                    {order.status !== "served" && order.status !== "completed" && (
+                      <div className="mb-3 flex gap-2">
+                        {STATUS_OPTIONS.filter(opt => {
+                          const currentStatus = order.status || "pending";
+                          // Allow transition logic
+                          if (currentStatus === "pending") return opt.value === "preparing";
+                          if (currentStatus === "preparing") return opt.value === "served";
+                          return false;
+                        }).map(opt => (
+                          <button
+                            key={opt.value}
+                            type="button"
+                            onClick={() => handleOrderStatusUpdate(order.id, opt.value)}
+                            disabled={updatingOrderStatus === order.id}
+                            className={`flex-1 rounded border px-2 py-1.5 text-xs font-semibold transition ${
+                              updatingOrderStatus === order.id 
+                                ? "opacity-50 cursor-not-allowed" 
+                                : `${opt.color} hover:opacity-80`
+                            }`}
+                          >
+                            {updatingOrderStatus === order.id ? "..." : `→ ${opt.label}`}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Order Items */}
                     <div className="mt-3 space-y-1 text-sm text-text-secondary">
                       {(order.items || []).map((item, idx) => (
                         <div key={`${order.id}-${idx}-${item.id || item.name}`} className="flex items-center justify-between">
@@ -416,10 +673,82 @@ export default function WaiterPage() {
               ))
             ) : (
               <div className="card p-8 text-center text-text-muted">
-                <p>No orders placed today yet.</p>
+                <p>{statusFilter === "all" ? "No orders placed today yet." : `No ${statusFilter} orders.`}</p>
               </div>
             )}
           </div>
+
+          {/* Status History Modal */}
+          {showStatusHistory && filteredOrdersToday.find(o => o.id === showStatusHistory) && (
+            <AnimatePresence>
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="fixed inset-0 z-40 bg-black/60"
+                onClick={() => setShowStatusHistory(null)}
+              />
+              <motion.div
+                initial={{ y: "100%", opacity: 0 }}
+                animate={{ y: 0, opacity: 1 }}
+                exit={{ y: "100%", opacity: 0 }}
+                className="fixed inset-x-0 bottom-0 z-50 max-h-[70vh] overflow-y-auto rounded-t-2xl border border-border-theme bg-bg-card p-4 max-w-md mx-auto"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div className="mb-4 flex items-center justify-between">
+                  <h3 className="font-display text-xl">Status History</h3>
+                  <button
+                    onClick={() => setShowStatusHistory(null)}
+                    className="text-text-muted hover:text-text-primary transition"
+                  >
+                    ✕
+                  </button>
+                </div>
+
+                {(() => {
+                  const order = filteredOrdersToday.find(o => o.id === showStatusHistory);
+                  if (!order) return null;
+                  
+                  return (
+                    <div className="space-y-2">
+                      <p className="text-sm font-semibold mb-3">Table {order.tableNumber}</p>
+                      
+                      {(order.statusHistory || []).length > 0 ? (
+                        <div className="space-y-2">
+                          {(order.statusHistory || []).map((entry, idx) => {
+                            const timestamp = entry.changedAt;
+                            const date = new Date(timestamp);
+                            const time = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                            
+                            return (
+                              <div key={idx} className="flex items-start gap-3 pb-2 border-b border-border-theme last:border-0">
+                                <div className="flex-shrink-0 mt-1">
+                                  <div className={`w-2 h-2 rounded-full ${
+                                    entry.status === "pending" ? "bg-orange-400" :
+                                    entry.status === "preparing" ? "bg-blue-400" :
+                                    entry.status === "served" ? "bg-green-400" :
+                                    entry.status === "completed" ? "bg-purple-400" :
+                                    "bg-gray-400"
+                                  }`} />
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-sm font-semibold capitalize">{entry.status}</p>
+                                  <p className="text-xs text-text-muted">{entry.label}</p>
+                                  <p className="text-xs text-text-muted mt-1">{time}</p>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      ) : (
+                        <p className="text-sm text-text-muted">No status history available</p>
+                      )}
+                    </div>
+                  );
+                })()}
+              </motion.div>
+            </AnimatePresence>
+          )}
         </section>
       )}
 
