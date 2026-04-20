@@ -34,6 +34,15 @@ function getPaperConfig(paperSize) {
   return configs[paperSize] || configs['80mm'];
 }
 
+function escapeHtml(str) {
+  return String(str ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
 function buildPrintDocument(contentHTML, config) {
   return `
     <!DOCTYPE html>
@@ -343,8 +352,8 @@ function showPrintTips(paperSize = '80mm') {
 
 export function buildReceiptHTML(order, settings) {
   // Safe numeric calculations with fallbacks
-  const gstPercent = parseFloat(order.gst) || 0;
-  const servicePercent = parseFloat(order.serviceCharge) || 0;
+  const gstPercent = parseFloat(order.gstPercent ?? order.gst) || 0;
+  const servicePercent = parseFloat(order.serviceChargePercent ?? order.serviceCharge) || 0;
   const discountValue = parseFloat(order.discount) || 0;
   
   const subtotal = (order.items || []).reduce((sum, item) =>
@@ -352,7 +361,7 @@ export function buildReceiptHTML(order, settings) {
   
   const gstAmount = Math.round(subtotal * (gstPercent / 100));
   const serviceAmount = Math.round(subtotal * (servicePercent / 100));
-  const discountAmount = order.discountType === '%'
+  const discountAmount = order.discountType === '%' || order.discountType === 'percentage'
     ? Math.round(subtotal * (discountValue / 100))
     : discountValue;
   const grandTotal = subtotal + gstAmount + serviceAmount - discountAmount;
@@ -361,13 +370,17 @@ export function buildReceiptHTML(order, settings) {
     ? new Date(order.createdAt.seconds * 1000).toLocaleString('en-IN')
     : new Date().toLocaleString('en-IN');
 
-  const itemRows = order.items.map(item => {
+  const billDisplayId = order.billId || order.billNumber || order.id || order.orderId || "";
+  const staffName = order.lastUpdatedByName || order.createdByName || order.waiterName || order.staffName || "";
+  const tableDisplay = order.tableName || order.tableNumber || "N/A";
+
+  const itemRows = (order.items || []).map(item => {
     const itemPrice = parseFloat(item.price) || 0;
     const itemQty = parseInt(item.quantity) || 1;
     const itemTotal = Math.round(itemPrice * itemQty);
     return `
     <div class="item-row">
-      <span class="item-name">${item.name}</span>
+      <span class="item-name">${escapeHtml(item.name)}</span>
       <span class="item-qty">${itemQty}x</span>
       <span class="item-price">₹${itemTotal}</span>
     </div>
@@ -376,26 +389,37 @@ export function buildReceiptHTML(order, settings) {
 
   return `
     <div class="receipt-header">
-      <div class="restaurant-name">${settings.restaurantName || settings.name || 'Restaurant'}</div>
-      ${settings.address ? `<div class="receipt-subtitle">${settings.address}</div>` : ''}
-      ${settings.gstNumber ? `<div class="receipt-subtitle">GSTIN: ${settings.gstNumber}</div>` : ''}
+      <div class="restaurant-name">${escapeHtml(settings.restaurantName || settings.name || 'Restaurant')}</div>
+      ${settings.address ? `<div class="receipt-subtitle">${escapeHtml(settings.address)}</div>` : ''}
+      ${settings.gstNumber ? `<div class="receipt-subtitle">GSTIN: ${escapeHtml(settings.gstNumber)}</div>` : ''}
     </div>
 
     <hr class="divider-solid">
 
     <div class="order-info">
       <div class="order-info-row">
-        <span>Order:</span><span>#${order.id}</span>
+        <span>Bill ID:</span><span>${escapeHtml(billDisplayId)}</span>
       </div>
       <div class="order-info-row">
-        <span>Table:</span><span>${order.tableName || 'N/A'}</span>
+        <span>Order:</span><span>#${escapeHtml(order.id || order.orderId || '')}</span>
       </div>
       <div class="order-info-row">
-        <span>Date:</span><span>${date}</span>
+        <span>Table:</span><span>${escapeHtml(tableDisplay)}</span>
       </div>
-      ${order.staffName ? `
       <div class="order-info-row">
-        <span>Staff:</span><span>${order.staffName}</span>
+        <span>Date:</span><span>${escapeHtml(date)}</span>
+      </div>
+      ${order.customerName ? `
+      <div class="order-info-row">
+        <span>Customer:</span><span>${escapeHtml(order.customerName)}</span>
+      </div>` : ''}
+      ${order.customerPhone ? `
+      <div class="order-info-row">
+        <span>Phone:</span><span>${escapeHtml(order.customerPhone)}</span>
+      </div>` : ''}
+      ${staffName ? `
+      <div class="order-info-row">
+        <span>Staff:</span><span>${escapeHtml(staffName)}</span>
       </div>` : ''}
     </div>
 
@@ -434,13 +458,13 @@ export function buildReceiptHTML(order, settings) {
     </div>
 
     <div class="totals-row">
-      <span>Payment</span><span>${order.paymentMethod || 'Cash'}</span>
+      <span>Payment</span><span>${escapeHtml(order.paymentMethod || 'Cash')}</span>
     </div>
 
     <hr class="divider">
 
     <div class="receipt-footer">
-      <div>${settings.thankYouMessage || 'Thank you for dining with us!'}</div>
+      <div>${escapeHtml(settings.thankYouMessage || 'Thank you for dining with us!')}</div>
       <div>Please visit again</div>
     </div>
   `;
@@ -451,12 +475,12 @@ export function buildKOTHTML(order) {
     ? new Date(order.createdAt.seconds * 1000).toLocaleString('en-IN')
     : new Date().toLocaleString('en-IN');
 
-  const itemRows = order.items.map(item => `
+  const itemRows = (order.items || []).map(item => `
     <div class="kot-item">
-      <span>${item.name}</span>
-      <span>x${item.quantity}</span>
+      <span>${escapeHtml(item.name)}</span>
+      <span>x${escapeHtml(item.quantity)}</span>
     </div>
-    ${item.note ? `<div class="kot-note">Note: ${item.note}</div>` : ''}
+    ${item.note ? `<div class="kot-note">Note: ${escapeHtml(item.note)}</div>` : ''}
   `).join('');
 
   return `
@@ -466,11 +490,11 @@ export function buildKOTHTML(order) {
     <hr class="divider-solid">
 
     <div class="order-info-row">
-      <span><b>Table: ${order.tableName || 'N/A'}</b></span>
-      <span>Order: #${order.id}</span>
+      <span><b>Table: ${escapeHtml(order.tableName || order.tableNumber || 'N/A')}</b></span>
+      <span>Order: #${escapeHtml(order.id || '')}</span>
     </div>
     <div class="order-info-row">
-      <span>${date}</span>
+      <span>${escapeHtml(date)}</span>
     </div>
 
     <hr class="divider-solid">

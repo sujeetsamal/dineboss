@@ -19,6 +19,14 @@ import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { subscribeToBills, getBillById, subscribeToMenu, deleteBill } from "@/lib/firestore";
 import { getMinutesAgo } from "@/lib/dateUtils";
 
+function displayBillId(bill) {
+  return bill?.billId || bill?.billNumber || String(bill?.orderId || bill?.id || "").substring(0, 8).toUpperCase();
+}
+
+function displayStaffName(name) {
+  return name || "Customer (QR)";
+}
+
 export default function BillsHistoryPage() {
   const router = useRouter();
   const { loading, restaurantId, error: userError } = useCurrentUser({
@@ -92,6 +100,8 @@ export default function BillsHistoryPage() {
       result = result.filter(
         (bill) =>
           String(bill.tableNumber).includes(query) ||
+          String(bill.billId || "").toLowerCase().includes(query) ||
+          String(bill.billNumber || "").toLowerCase().includes(query) ||
           String(bill.orderId).toLowerCase().includes(query) ||
           String(bill.paymentMethod).toLowerCase().includes(query)
       );
@@ -240,7 +250,9 @@ export default function BillsHistoryPage() {
 
           <div class="bill-info">
             <p><strong>Table:</strong> ${bill.tableNumber}</p>
-            <p><strong>Bill ID:</strong> ${String(bill.orderId).substring(0, 8).toUpperCase()}</p>
+            <p><strong>Bill ID:</strong> ${displayBillId(bill)}</p>
+            ${bill.customerName ? `<p><strong>Customer:</strong> ${bill.customerName}</p>` : ''}
+            ${bill.customerPhone ? `<p><strong>Phone:</strong> ${bill.customerPhone}</p>` : ''}
             <p><strong>Date:</strong> ${new Date(bill.paidAt?.toDate?.() || bill.createdAt?.toDate?.() || new Date()).toLocaleDateString()}</p>
             <p><strong>Time:</strong> ${new Date(bill.paidAt?.toDate?.() || bill.createdAt?.toDate?.() || new Date()).toLocaleTimeString()}</p>
           </div>
@@ -417,7 +429,7 @@ export default function BillsHistoryPage() {
                       className="border-b border-border-theme hover:bg-bg-card/50 transition"
                     >
                       <td className="px-5 py-4 text-sm font-mono text-text-muted">
-                        {String(bill.orderId).substring(0, 8).toUpperCase()}
+                        {displayBillId(bill)}
                       </td>
                       <td className="px-5 py-4 text-sm font-semibold">Table {bill.tableNumber}</td>
                       <td className="px-5 py-4 text-xs text-text-secondary">
@@ -427,9 +439,13 @@ export default function BillsHistoryPage() {
                         <span className="inline-block rounded-full border border-green-500/50 bg-green-500/10 px-2.5 py-1 text-green-300 font-semibold">
                           ✓ {bill.paymentMethod || "Cash"}
                         </span>
+                        <div className="mt-2 space-y-0.5 text-text-muted">
+                          <p>Created by: {displayStaffName(bill.createdByName)}</p>
+                          <p>Last updated by: {displayStaffName(bill.lastUpdatedByName)}</p>
+                        </div>
                       </td>
                       <td className="px-5 py-4 text-sm font-bold text-gold text-right">
-                        ₹{Number(bill.finalAmount || 0).toFixed(0)}
+                        ₹{Number(bill.finalAmount ?? bill.total ?? bill.totalAmount ?? 0).toFixed(0)}
                       </td>
                       <td className="px-5 py-4 text-right">
                         <div className="flex items-center justify-end gap-2">
@@ -496,7 +512,7 @@ export default function BillsHistoryPage() {
                 <div className="grid grid-cols-2 gap-4 text-sm">
                   <div>
                     <p className="text-text-secondary text-xs mb-1">Bill ID</p>
-                    <p className="font-mono font-bold text-gold text-sm">{String(billDetail.orderId).substring(0, 8).toUpperCase()}</p>
+                    <p className="font-mono font-bold text-gold text-sm">{displayBillId(billDetail)}</p>
                   </div>
                   <div>
                     <p className="text-text-secondary text-xs mb-1">Table</p>
@@ -509,6 +525,14 @@ export default function BillsHistoryPage() {
                   <div>
                     <p className="text-text-secondary text-xs mb-1">Payment</p>
                     <p className="text-sm">{billDetail.paymentMethod || "Cash"}</p>
+                  </div>
+                  <div>
+                    <p className="text-text-secondary text-xs mb-1">Created by</p>
+                    <p className="text-sm">{displayStaffName(billDetail.createdByName)}</p>
+                  </div>
+                  <div>
+                    <p className="text-text-secondary text-xs mb-1">Last updated by</p>
+                    <p className="text-sm">{displayStaffName(billDetail.lastUpdatedByName)}</p>
                   </div>
                 </div>
               </div>
@@ -598,7 +622,7 @@ export default function BillsHistoryPage() {
                 )}
                 <div className="border-t border-border-theme pt-3 flex justify-between font-bold">
                   <span>Total</span>
-                  <span className="text-gold text-lg">₹{billDetail.finalAmount?.toFixed(0) || 0}</span>
+                  <span className="text-gold text-lg">₹{Number(billDetail.finalAmount ?? billDetail.total ?? billDetail.totalAmount ?? 0).toFixed(0)}</span>
                 </div>
               </div>
 

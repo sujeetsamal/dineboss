@@ -34,7 +34,7 @@ function StatCard({ title, value, subtitle, valueClass = "" }) {
 }
 
 export default function AdminPage() {
-  const { loading, user, role, restaurantId, error, setError } = useCurrentUser({ allowedRoles: ["admin"] });
+  const { loading, user, profile, role, restaurantId, error, setError } = useCurrentUser({ allowedRoles: ["admin"] });
   const [restaurant, setRestaurant] = useState(null);
   const [orders, setOrders] = useState([]);
   const [tables, setTables] = useState([]);
@@ -118,7 +118,10 @@ export default function AdminPage() {
 
   async function handleStatusChange(orderId, status) {
     try {
-      await updateOrderStatus(restaurantId, orderId, status);
+      await updateOrderStatus(restaurantId, orderId, status, {
+        uid: user?.uid,
+        name: profile?.displayName || user?.displayName || user?.email || "Admin",
+      });
       toast.success(`Order marked ${status}`);
     } catch (statusError) {
       toast.error("Unable to update order");
@@ -244,6 +247,7 @@ export default function AdminPage() {
                     <OrderPanel
                       order={order}
                       showActions
+                      showAttribution
                       onStatusChange={(status) => handleStatusChange(order.id, status)}
                       onGenerateBill={() => handleGenerateBill(order)}
                     />

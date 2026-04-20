@@ -40,6 +40,20 @@ function dateStartEnd(range) {
   return { start, end }
 }
 
+function displayBillId(bill) {
+  return bill?.billId || bill?.billNumber || String(bill?.id || '').substring(0, 8).toUpperCase();
+}
+
+function displayStaffName(name) {
+  return name || 'Customer (QR)';
+}
+
+function formatBillDate(value) {
+  const date = value?.toDate?.() || value;
+  if (!date) return '-';
+  return new Date(date).toLocaleString();
+}
+
 export default function BillHistoryPage() {
   const { restaurantId } = useCurrentUser({ allowedRoles: ['admin'] })
   const [bills, setBills] = useState([])
@@ -56,11 +70,15 @@ export default function BillHistoryPage() {
 
   const mappedBills = useMemo(() => bills.map((b) => ({
     id: b.id,
+    billId: b.billId,
+    billNumber: b.billNumber,
     createdAt: b.createdAt,
     tableNumber: b.tableNumber ?? 0,
-    total: Number(b.totalAmount ?? b.total ?? 0),
+    total: Number(b.finalAmount ?? b.total ?? b.totalAmount ?? 0),
     items: b.items ?? [],
-    status: b.status ?? 'paid'
+    status: b.status ?? 'paid',
+    createdByName: b.createdByName,
+    lastUpdatedByName: b.lastUpdatedByName,
   })), [bills])
 
   const onExport = () => {
@@ -106,14 +124,18 @@ export default function BillHistoryPage() {
       </div>
       <div className="p-4">
         <table className="w-full text-left text-sm" style={{ color: 'white', borderCollapse: 'collapse' }}>
-          <thead><tr><th className="p-2 border-b border-gray-700">Bill</th><th className="p-2 border-b border-gray-700">Table</th><th className="p-2 border-b border-gray-700">Total</th><th className="p-2 border-b border-gray-700">Created</th></tr></thead>
+          <thead><tr><th className="p-2 border-b border-gray-700">Bill</th><th className="p-2 border-b border-gray-700">Table</th><th className="p-2 border-b border-gray-700">Total</th><th className="p-2 border-b border-gray-700">Staff</th><th className="p-2 border-b border-gray-700">Created</th></tr></thead>
           <tbody>
             {mappedBills.map((b) => (
               <tr key={b.id}>
-                <td className="p-2 border-b border-gray-700">{b.id ?? '-'}</td>
+                <td className="p-2 border-b border-gray-700">{displayBillId(b)}</td>
                 <td className="p-2 border-b border-gray-700">{b.tableNumber}</td>
                 <td className="p-2 border-b border-gray-700">₹{Number(b.total).toFixed(0)}</td>
-                <td className="p-2 border-b border-gray-700">{new Date(b.createdAt?.toDate?.() || b.createdAt || Date.now()).toLocaleString()}</td>
+                <td className="p-2 border-b border-gray-700 text-xs">
+                  <p>Created by: {displayStaffName(b.createdByName)}</p>
+                  <p>Last updated by: {displayStaffName(b.lastUpdatedByName)}</p>
+                </td>
+                <td className="p-2 border-b border-gray-700">{formatBillDate(b.createdAt)}</td>
               </tr>
             ))}
           </tbody>

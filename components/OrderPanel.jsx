@@ -5,6 +5,7 @@ const STATUS_BORDERS = {
   preparing: "border-l-[#3B82F6]",        // blue
   served: "border-l-[#06B6D4]",           // cyan
   completed: "border-l-[#6B7280]",        // gray (faded)
+  rejected: "border-l-[#EF4444]",         // red
 };
 
 const STATUS_BADGES = {
@@ -12,6 +13,7 @@ const STATUS_BADGES = {
   preparing: "badge-blue",
   served: "badge-cyan",
   completed: "badge-gray",
+  rejected: "badge-red",
 };
 
 function getMinutesAgo(createdAt) {
@@ -23,7 +25,11 @@ function getMinutesAgo(createdAt) {
   return `${mins} min ago`;
 }
 
-export default function OrderPanel({ order, onStatusChange, onGenerateBill, showActions = false }) {
+function displayStaffName(name) {
+  return name || "Customer (QR)";
+}
+
+export default function OrderPanel({ order, onStatusChange, onGenerateBill, showActions = false, showAttribution = false }) {
   return (
     <div className={`card border-l-4 p-4 ${STATUS_BORDERS[order.status] || STATUS_BORDERS.pending}`}>
       <div className="flex items-center justify-between gap-3">
@@ -53,6 +59,12 @@ export default function OrderPanel({ order, onStatusChange, onGenerateBill, show
       <p className="mt-1 text-xs text-text-muted">
         Payment: <span className="capitalize">{order.paymentStatus || "unpaid"}</span>
       </p>
+      {showAttribution ? (
+        <div className="mt-2 space-y-0.5 text-xs text-text-muted">
+          <p>Created by: {displayStaffName(order.createdByName)}</p>
+          <p>Last updated by: {displayStaffName(order.lastUpdatedByName)}</p>
+        </div>
+      ) : null}
 
       {showActions ? (
         <div className="mt-3 flex flex-wrap gap-2">

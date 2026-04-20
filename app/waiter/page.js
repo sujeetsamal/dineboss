@@ -1,15 +1,14 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { ShoppingCart, LogOut, ClipboardList, UtensilsCrossed, Grid3x3, CreditCard } from "lucide-react";
+import { ShoppingCart, LogOut, ClipboardList, UtensilsCrossed, Grid3x3 } from "lucide-react";
 import { AnimatePresence, motion } from "framer-motion";
 import toast from "react-hot-toast";
 import { signOut } from "firebase/auth";
 import { useRouter } from "next/navigation";
 import MenuItem from "@/components/MenuItem";
 import TableCard from "@/components/TableCard";
-import OrderPanel from "@/components/OrderPanel";
-import { placeOrder, subscribeToMenu, subscribeToTables, subscribeToOrders, subscribeToRestaurant } from "@/lib/firestore";
+import { placeOrder, subscribeToMenu, subscribeToTables, subscribeToOrders, subscribeToRestaurant, updateOrderBillDetails } from "@/lib/firestore";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { auth } from "@/lib/firebase";
 import { getStartOfDay, getEndOfDay } from "@/lib/dateUtils";
@@ -23,7 +22,7 @@ const CATEGORY_TABS = [
 ];
 
 export default function WaiterPage() {
-  const { loading, user, role, restaurantId, error, setError } = useCurrentUser({ allowedRoles: ["waiter"] });
+  const { loading, user, profile, role, restaurantId, error, setError } = useCurrentUser({ allowedRoles: ["waiter"] });
   const router = useRouter();
   const [step, setStep] = useState(1);
   const [tables, setTables] = useState([]);
@@ -37,6 +36,10 @@ export default function WaiterPage() {
   const [placing, setPlacing] = useState(false);
   const [activeTab, setActiveTab] = useState("tables"); // "tables", "myorders", "menu"
   const [searchTerm, setSearchTerm] = useState("");
+  const [editingOrder, setEditingOrder] = useState(null);
+  const [draftItems, setDraftItems] = useState([]);
+  const [editMenuSearch, setEditMenuSearch] = useState("");
+  const [savingChanges, setSavingChanges] = useState(false);
 
   useEffect(() => {
     if (!restaurantId) return undefined;
@@ -93,6 +96,11 @@ export default function WaiterPage() {
 
   const occupiedTables = useMemo(() => tables.filter((t) => t.status === "occupied" || t.isOccupied).length, [tables]);
   const pendingOrders = useMemo(() => orders.filter((o) => o.status === "pending").length, [orders]);
+  const editMenuItems = useMemo(() => {
+    const query = editMenuSearch.trim().toLowerCase();
+    if (!query) return menu.slice(0, 8);
+    return menu.filter((item) => (item.name || "").toLowerCase().includes(query)).slice(0, 8);
+  }, [editMenuSearch, menu]);
 
   function addToCart(item) {
     setCart((prev) => {
@@ -152,6 +160,9 @@ export default function WaiterPage() {
         items: cart,
         total,
         createdBy: user?.uid,
+        createdByName: profile?.displayName || user?.displayName || user?.email || "Waiter",
+        lastUpdatedBy: user?.uid,
+        lastUpdatedByName: profile?.displayName || user?.displayName || user?.email || "Waiter",
         paymentStatus: "unpaid",
       });
       toast.success("Order placed successfully");
@@ -164,6 +175,71 @@ export default function WaiterPage() {
       toast.error("Order failed");
     } finally {
       setPlacing(false);
+    }
+  }
+
+  function startEditingOrder(order) {
+    setEditingOrder(order);
+    setDraftItems((order.items || []).map((item) => ({ ...item })));
+    setEditMenuSearch("");
+  }
+
+  function changeDraftItem(item, delta) {
+    setDraftItems((prev) => {
+      const existing = prev.find((draftItem) => draftItem.id === item.id);
+      if (!existing && delta > 0) {
+        return [
+          ...prev,
+          {
+            id: item.id,
+            name: item.name,
+            price: Number(item.price || 0),
+            quantity: 1,
+            category: item.category,
+          },
+        ];
+      }
+      return prev
+        .map((draftItem) =>
+          draftItem.id === item.id
+            ? { ...draftItem, quantity: Math.max(0, Number(draftItem.quantity || 0) + delta) }
+            : draftItem
+        )
+        .filter((draftItem) => Number(draftItem.quantity || 0) > 0);
+    });
+  }
+
+  async function saveEditedOrder() {
+    if (!restaurantId || !editingOrder?.id) return;
+    if (!draftItems.length) {
+      toast.error("Order needs at least one item");
+      return;
+    }
+    setSavingChanges(true);
+    try {
+      await updateOrderBillDetails(
+        restaurantId,
+        editingOrder.id,
+        {
+          items: draftItems,
+          gstPercent: editingOrder.gstPercent,
+          serviceChargePercent: editingOrder.serviceChargePercent,
+          discount: editingOrder.discount,
+          discountType: editingOrder.discountType,
+          paymentMethod: editingOrder.paymentMethod,
+        },
+        {
+          uid: user?.uid,
+          name: profile?.displayName || user?.displayName || user?.email || "Waiter",
+        }
+      );
+      toast.success("Changes saved");
+      setEditingOrder(null);
+      setDraftItems([]);
+    } catch (err) {
+      toast.error(err.message || "Could not save changes");
+    } finally {
+      setSavingChanges(false);
     }
   }
 
@@ -313,7 +389,29 @@ export default function WaiterPage() {
             {myOrdersToday.length > 0 ? (
               myOrdersToday.map((order) => (
                 <motion.div key={order.id} initial={{ x: -8, opacity: 0 }} animate={{ x: 0, opacity: 1 }}>
-                  <OrderPanel order={order} showActions={false} />
+                  <div className="card border-l-4 border-l-gold p-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="font-semibold">Table {order.tableNumber}</p>
+                        <p className="mt-1 text-xs text-text-muted capitalize">Status: {order.status || "pending"}</p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => startEditingOrder(order)}
+                        className="rounded-lg border border-gold px-3 py-2 text-xs font-semibold text-gold transition hover:bg-gold/10"
+                      >
+                        Edit Items
+                      </button>
+                    </div>
+                    <div className="mt-3 space-y-1 text-sm text-text-secondary">
+                      {(order.items || []).map((item, idx) => (
+                        <div key={`${order.id}-${idx}-${item.id || item.name}`} className="flex items-center justify-between">
+                          <span>{item.quantity}x {item.name}</span>
+                          <span>₹{Number(item.price || 0) * Number(item.quantity || 0)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
                 </motion.div>
               ))
             ) : (
@@ -393,14 +491,113 @@ export default function WaiterPage() {
           <UtensilsCrossed size={20} />
           <span className="text-xs">Menu</span>
         </button>
-        <button
-          onClick={() => router.push("/waiter/billing")}
-          className="flex flex-col items-center gap-1 p-2 rounded transition text-text-secondary hover:text-gold"
-        >
-          <CreditCard size={20} />
-          <span className="text-xs">Billing</span>
-        </button>
       </nav>
+
+      {/* EDIT ORDER MODAL */}
+      <AnimatePresence>
+        {editingOrder ? (
+          <>
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 z-30 bg-black/60"
+              onClick={() => !savingChanges && setEditingOrder(null)}
+            />
+            <motion.div
+              initial={{ y: "100%" }}
+              animate={{ y: 0 }}
+              exit={{ y: "100%" }}
+              transition={{ duration: 0.25 }}
+              className="fixed inset-x-0 bottom-0 z-40 max-h-[88vh] overflow-y-auto rounded-t-2xl border border-border-theme bg-bg-card p-4 max-w-md"
+            >
+              <div className="mb-3 flex items-center justify-between">
+                <div>
+                  <h3 className="font-display text-2xl">Edit Order</h3>
+                  <p className="text-xs text-text-muted">Table {editingOrder.tableNumber}</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setEditingOrder(null)}
+                  disabled={savingChanges}
+                  className="rounded-lg border border-border-theme px-3 py-2 text-xs text-text-secondary"
+                >
+                  Close
+                </button>
+              </div>
+
+              <div className="space-y-2">
+                {draftItems.map((item) => (
+                  <div key={item.id || item.name} className="flex items-center justify-between rounded-xl border border-border-theme px-3 py-2 text-sm">
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate font-medium">{item.name}</p>
+                      <p className="text-xs text-text-muted">₹{Number(item.price || 0).toFixed(0)} each</p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => changeDraftItem(item, -1)}
+                        className="rounded border border-border-theme px-2 py-1 text-gold"
+                      >
+                        -
+                      </button>
+                      <span className="w-7 text-center font-semibold">{item.quantity}</span>
+                      <button
+                        type="button"
+                        onClick={() => changeDraftItem(item, 1)}
+                        className="rounded border border-border-theme px-2 py-1 text-gold"
+                      >
+                        +
+                      </button>
+                    </div>
+                  </div>
+                ))}
+                {!draftItems.length ? <p className="rounded-lg border border-border-theme p-3 text-sm text-text-muted">No items selected.</p> : null}
+              </div>
+
+              <div className="mt-4">
+                <input
+                  type="text"
+                  placeholder="Search menu to add items..."
+                  value={editMenuSearch}
+                  onChange={(e) => setEditMenuSearch(e.target.value)}
+                  className="w-full input-gold px-3 py-2 text-sm"
+                />
+                <div className="mt-2 grid gap-2">
+                  {editMenuItems.map((item) => {
+                    const quantity = draftItems.find((draftItem) => draftItem.id === item.id)?.quantity || 0;
+                    return (
+                      <button
+                        key={item.id}
+                        type="button"
+                        onClick={() => changeDraftItem(item, 1)}
+                        className="flex items-center justify-between rounded-lg border border-border-theme px-3 py-2 text-left text-sm transition hover:border-gold"
+                      >
+                        <span>
+                          <span className="block font-medium">{item.name}</span>
+                          <span className="text-xs text-text-muted">₹{Number(item.price || 0).toFixed(0)}</span>
+                        </span>
+                        <span className="rounded-full border border-gold px-2 py-0.5 text-xs text-gold">
+                          {quantity ? `${quantity} in order` : "Add"}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={saveEditedOrder}
+                disabled={savingChanges || !draftItems.length}
+                className="btn-gold mt-4 w-full"
+              >
+                {savingChanges ? "Saving..." : "Save Changes"}
+              </button>
+            </motion.div>
+          </>
+        ) : null}
+      </AnimatePresence>
 
       {/* CART MODAL */}
       <AnimatePresence>

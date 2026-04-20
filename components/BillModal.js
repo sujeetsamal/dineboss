@@ -4,7 +4,8 @@ import { useEffect, useState } from 'react';
 import { X, Printer, Save } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { db } from '@/lib/firebase';
-import { doc, updateDoc, collection, addDoc, serverTimestamp, getDoc } from 'firebase/firestore';
+import { doc, updateDoc, serverTimestamp, getDoc } from 'firebase/firestore';
+import { createBillFromOrder } from '@/lib/firestore';
 
 export default function BillModal({
   isOpen,
@@ -42,12 +43,6 @@ export default function BillModal({
 
     const initBill = async () => {
       try {
-        // Get or increment bill counter
-        const restaurantDocRef = doc(db, 'restaurants', restaurantId);
-        const restaurantDocSnap = await getDoc(restaurantDocRef);
-        const billCounterNext = (restaurantDocSnap.data()?.billCounter || 0) + 1;
-        const billNumber = `${restaurantDetails.billPrefix || 'DB'}-${String(billCounterNext).padStart(4, '0')}`;
-
         // Calculate amounts
         const items = order.items || [];
         const subtotal = items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
@@ -56,8 +51,7 @@ export default function BillModal({
         const total = subtotal + gstAmount;
 
         setBill({
-          billNumber,
-          billCounterNext,
+          billNumber: order.billId || 'Generated on save',
           orderIds: [order.id],
           tableNumber: order.tableNumber,
           waiterName: order.waiterName || 'N/A',
@@ -113,35 +107,36 @@ export default function BillModal({
     if (!restaurantId || !bill) return;
     setIsSaving(true);
     try {
-      // Add to bills collection
-      const billsRef = collection(db, 'restaurants', restaurantId, 'bills');
-      const billDocRef = await addDoc(billsRef, {
-        billNumber: bill.billNumber,
+      const billRecord = await createBillFromOrder(restaurantId, order.id, {
+        ...order,
         orderIds: bill.orderIds,
         tableNumber: bill.tableNumber,
         waiterName: bill.waiterName,
-        items: bill.items,
-        subtotal: bill.subtotal,
+        items: bill.items.map((item) => ({
+          name: item.name,
+          quantity: item.quantity,
+          price: item.price,
+        })),
+        totalAmount: bill.subtotal,
         gstPercent: bill.gstPercent,
-        gstAmount: bill.gstAmount,
-        discountAmount: bill.discountAmount,
-        total: bill.total,
+        tax: bill.gstAmount,
+        discount: bill.discountAmount,
+        finalAmount: bill.total,
         paymentMethod: bill.paymentMethod,
         paymentStatus: bill.paymentStatus,
         notes: bill.notes,
-        createdAt: serverTimestamp(),
-        createdBy: userId,
-      });
-
-      // Update restaurant bill counter
-      const restaurantDocRef = doc(db, 'restaurants', restaurantId);
-      await updateDoc(restaurantDocRef, { billCounter: bill.billCounterNext });
+        createdBy: order.createdBy || userId,
+        createdByName: order.createdByName || null,
+        lastUpdatedBy: userId,
+        lastUpdatedByName: order.lastUpdatedByName || null,
+      }, { uid: userId, name: order.lastUpdatedByName || order.createdByName || 'Admin' });
 
       // Update order with billId
       if (order?.id) {
         const orderDocRef = doc(db, 'orders', restaurantId, 'orders', order.id);
         await updateDoc(orderDocRef, {
-          billId: billDocRef.id,
+          billId: billRecord.billId,
+          billDocId: billRecord.id,
           status: 'completed',
           paymentStatus: bill.paymentStatus || 'unpaid',
           updatedAt: serverTimestamp(),

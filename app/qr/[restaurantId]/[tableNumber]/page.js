@@ -1,12 +1,12 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { useParams } from "next/navigation";
-import { ShoppingCart, Check, ArrowLeft } from "lucide-react";
+import { useParams, useRouter } from "next/navigation";
+import { ShoppingCart } from "lucide-react";
 import { AnimatePresence, motion } from "framer-motion";
 import toast from "react-hot-toast";
 import MenuItem from "@/components/MenuItem";
-import { placeOrder, subscribeToMenu, subscribeToRestaurant } from "@/lib/firestore";
+import { placeOrder, subscribeToMenu, subscribeToRestaurant, subscribeToRestaurantSettings } from "@/lib/firestore";
 
 const TABS = [
   { label: "All", value: "all" },
@@ -19,6 +19,7 @@ const TABS = [
 
 export default function CustomerQrPage() {
   const params = useParams();
+  const router = useRouter();
   
   // Extract params directly from new routing
   const restaurantId = String(params.restaurantId || "");
@@ -33,9 +34,10 @@ export default function CustomerQrPage() {
   const [placing, setPlacing] = useState(false);
   const [error, setError] = useState("");
   const [restaurantName, setRestaurantName] = useState("");
-  const [orderPlaced, setOrderPlaced] = useState(false);
-  const [placedOrderId, setPlacedOrderId] = useState("");
-  const [orderSummary, setOrderSummary] = useState({ itemCount: 0, total: 0 });
+  const [settings, setSettings] = useState({ requireCustomerDetails: false });
+  const [detailsOpen, setDetailsOpen] = useState(false);
+  const [customerDetails, setCustomerDetails] = useState({ name: "", phone: "" });
+  const [detailErrors, setDetailErrors] = useState({});
 
   // Validation: Ensure both restaurantId and tableNumber exist
   useEffect(() => {
@@ -61,10 +63,15 @@ export default function CustomerQrPage() {
       console.error("Restaurant error:", e);
       setError(e.message);
     });
+
+    const unsubSettings = subscribeToRestaurantSettings(restaurantId, setSettings, (e) => {
+      console.warn("Settings error:", e);
+    });
     
     return () => {
       unsubMenu?.();
       unsubRestaurant?.();
+      unsubSettings?.();
     };
   }, [restaurantId]);
 
@@ -134,9 +141,26 @@ export default function CustomerQrPage() {
     setCart([]);
   }
 
-  // Place order
-  async function handlePlaceOrder() {
-    // Validation
+  function validateDetails({ allowSkip = false } = {}) {
+    const name = customerDetails.name.trim();
+    const phone = customerDetails.phone.trim();
+    const nextErrors = {};
+
+    if (!allowSkip && settings.requireCustomerDetails && !name) {
+      nextErrors.name = "Name is required.";
+    }
+
+    if (!allowSkip && settings.requireCustomerDetails && !phone) {
+      nextErrors.phone = "Mobile number is required.";
+    } else if (phone && !/^\d{10}$/.test(phone)) {
+      nextErrors.phone = "Enter a valid 10 digit mobile number.";
+    }
+
+    setDetailErrors(nextErrors);
+    return Object.keys(nextErrors).length === 0;
+  }
+
+  function openCustomerDetails() {
     if (!restaurantId || !tableNumber) {
       setError("Invalid restaurant or table information");
       toast.error("Invalid table information");
@@ -148,15 +172,21 @@ export default function CustomerQrPage() {
       return;
     }
 
+    setDetailErrors({});
+    setDetailsOpen(true);
+  }
+
+  // Place order
+  async function handlePlaceOrder({ skipDetails = false } = {}) {
+    if (!skipDetails && !validateDetails()) return;
+    if (skipDetails && settings.requireCustomerDetails) return;
+
     setPlacing(true);
     setError("");
 
     try {
-      // Store order summary BEFORE clearing cart
-      setOrderSummary({
-        itemCount,
-        total,
-      });
+      const name = skipDetails ? null : customerDetails.name.trim() || null;
+      const phone = skipDetails ? null : customerDetails.phone.trim() || null;
 
       const orderId = await placeOrder(restaurantId, {
         tableNumber: Number(tableNumber),
@@ -164,16 +194,20 @@ export default function CustomerQrPage() {
         total,
         paymentMethod: "cash",
         paymentStatus: "unpaid",
-        createdBy: "customer-qr",
-        restaurantId
+        customerName: name,
+        customerPhone: phone,
+        createdBy: null,
+        createdByName: null,
+        lastUpdatedBy: null,
+        lastUpdatedByName: null,
+        restaurantId,
       });
 
-      // Success: Show confirmation UI
-      setPlacedOrderId(orderId);
-      setOrderPlaced(true);
       setCart([]);
       setCartOpen(false);
+      setDetailsOpen(false);
       toast.success("Order placed successfully!");
+      router.push(`/qr/${restaurantId}/order/${orderId}`);
     } catch (placeError) {
       console.error("Order error:", placeError);
       setError(placeError.message || "Unable to place order. Please try again.");
@@ -181,13 +215,6 @@ export default function CustomerQrPage() {
     } finally {
       setPlacing(false);
     }
-  }
-
-  // Reset order confirmation
-  function resetOrder() {
-    setOrderPlaced(false);
-    setPlacedOrderId("");
-    setOrderSummary({ itemCount: 0, total: 0 });
   }
 
   // If no valid params
@@ -202,92 +229,6 @@ export default function CustomerQrPage() {
         <div className="max-w-md w-full text-center rounded-2xl p-6" style={{ background: '#161009', border: '1px solid #2E1F0A' }}>
           <p className="text-lg text-danger font-semibold mb-2">❌ Invalid QR Code</p>
           <p className="text-sm text-text-secondary">This QR code is not valid. Please scan a valid table QR code from your restaurant.</p>
-        </div>
-      </main>
-    );
-  }
-
-  // ORDER CONFIRMATION SCREEN
-  if (orderPlaced) {
-    return (
-      <main 
-        className="min-h-screen w-full px-4 py-6 flex items-center justify-center"
-        style={{ 
-          background: '#0D0A06',
-          backgroundImage: 'radial-gradient(ellipse at center, rgba(245,158,11,0.08) 0%, transparent 70%)'
-        }}
-      >
-        <div className="mx-auto w-full max-w-md">
-          <motion.div
-            initial={{ scale: 0, opacity: 0 }}
-            animate={{ scale: 1, opacity: 1 }}
-            transition={{ duration: 0.5, type: "spring" }}
-            className="rounded-2xl p-8 text-center"
-            style={{ background: '#161009', border: '1px solid #2E1F0A' }}
-          >
-            {/* Success icon */}
-            <motion.div
-              initial={{ scale: 0 }}
-              animate={{ scale: 1 }}
-              transition={{ delay: 0.2, duration: 0.4, type: "spring" }}
-              className="flex h-20 w-20 items-center justify-center rounded-full mx-auto mb-4"
-              style={{ background: 'rgba(34, 197, 94, 0.1)', border: '2px solid #22C55E' }}
-            >
-              <Check size={40} className="text-green-500" />
-            </motion.div>
-
-            {/* Title */}
-            <h1 className="font-display text-3xl text-gold mb-2">Order Placed!</h1>
-            
-            {/* Message */}
-            <p className="text-text-secondary text-sm mb-4">
-              Your order has been successfully placed and sent to the kitchen. Your meal will be prepared with care.
-            </p>
-
-            {/* Order details */}
-            <div className="mb-6 space-y-2 rounded-lg p-4" style={{ background: '#0F0C08', border: '1px solid #2E1F0A' }}>
-              <div className="flex justify-between text-sm">
-                <span className="text-text-secondary">Order ID</span>
-                <span className="text-gold font-mono text-xs font-semibold">{placedOrderId.slice(0, 8)}</span>
-              </div>
-              <div className="flex justify-between text-sm">
-                <span className="text-text-secondary">Table</span>
-                <span className="text-text-primary font-semibold">{tableNumber}</span>
-              </div>
-              <div className="flex justify-between text-sm">
-                <span className="text-text-secondary">Items</span>
-                <span className="text-text-primary font-semibold">{orderSummary.itemCount}</span>
-              </div>
-              <div className="border-t border-border-theme pt-2 mt-2 flex justify-between">
-                <span className="text-text-secondary">Total</span>
-                <span className="text-gold font-bold">₹{orderSummary.total.toFixed(0)}</span>
-              </div>
-            </div>
-
-            {/* Status info */}
-            <div className="mb-6 p-3 rounded-lg" style={{ background: 'rgba(34, 197, 94, 0.1)', border: '1px solid rgba(34, 197, 94, 0.2)' }}>
-              <p className="text-xs text-green-400 font-semibold">✓ Status: Received</p>
-              <p className="text-xs text-text-secondary mt-1">Chef will start preparing your order soon</p>
-            </div>
-
-            {/* Back to menu button */}
-            <button
-              type="button"
-              onClick={resetOrder}
-              className="w-full rounded-xl px-4 py-3 font-semibold text-text-primary transition"
-              style={{
-                background: 'linear-gradient(135deg, #F59E0B 0%, #EA580C 100%)',
-                boxShadow: '0 4px 16px rgba(245, 158, 11, 0.2)'
-              }}
-            >
-              Continue Browsing
-            </button>
-
-            {/* Helper text */}
-            <p className="mt-4 text-xs text-text-muted">
-              Powered by <span className="text-gold font-semibold">DineBoss</span>
-            </p>
-          </motion.div>
         </div>
       </main>
     );
@@ -468,11 +409,11 @@ export default function CustomerQrPage() {
               <div className="flex gap-3">
                 <button
                   type="button"
-                  onClick={handlePlaceOrder}
+                  onClick={openCustomerDetails}
                   disabled={placing || !cartItems.length}
                   className="btn-gold flex-1 py-3 text-sm font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  {placing ? '🔄 Placing...' : '✓ Place Order'}
+                  {placing ? 'Placing...' : 'Place Order'}
                 </button>
                 <button
                   type="button"
@@ -485,6 +426,102 @@ export default function CustomerQrPage() {
                   Clear
                 </button>
               </div>
+            </motion.div>
+          </>
+        ) : null}
+      </AnimatePresence>
+
+      {/* Customer details modal */}
+      <AnimatePresence>
+        {detailsOpen ? (
+          <>
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 z-[60] bg-black/70"
+            />
+            <motion.div
+              initial={{ y: 24, opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              exit={{ y: 24, opacity: 0 }}
+              transition={{ duration: 0.2 }}
+              className="fixed inset-x-4 bottom-4 z-[70] mx-auto w-auto max-w-sm rounded-2xl border border-[#2E1F0A] bg-[#161009] p-5 shadow-2xl"
+            >
+              <div className="mb-4">
+                <h2 className="font-display text-2xl text-gold">Customer Details</h2>
+                <p className="mt-1 text-sm text-text-secondary">
+                  {settings.requireCustomerDetails
+                    ? "Name and mobile number are required for this order."
+                    : "Add your details for staff reference, or skip to continue."}
+                </p>
+              </div>
+
+              <div className="space-y-3">
+                <label className="block">
+                  <span className="mb-1 block text-xs font-semibold text-text-secondary">Name</span>
+                  <input
+                    type="text"
+                    value={customerDetails.name}
+                    onChange={(e) => {
+                      setCustomerDetails((prev) => ({ ...prev, name: e.target.value }));
+                      setDetailErrors((prev) => ({ ...prev, name: "" }));
+                    }}
+                    className="w-full rounded-lg border border-border-theme bg-bg-card px-3 py-3 text-sm text-text-primary outline-none transition focus:border-gold"
+                    placeholder="Your name"
+                  />
+                  {detailErrors.name ? <span className="mt-1 block text-xs text-red-400">{detailErrors.name}</span> : null}
+                </label>
+
+                <label className="block">
+                  <span className="mb-1 block text-xs font-semibold text-text-secondary">Mobile Number</span>
+                  <input
+                    type="tel"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    maxLength={10}
+                    value={customerDetails.phone}
+                    onChange={(e) => {
+                      const digits = e.target.value.replace(/\D/g, "").slice(0, 10);
+                      setCustomerDetails((prev) => ({ ...prev, phone: digits }));
+                      setDetailErrors((prev) => ({ ...prev, phone: "" }));
+                    }}
+                    className="w-full rounded-lg border border-border-theme bg-bg-card px-3 py-3 text-sm text-text-primary outline-none transition focus:border-gold"
+                    placeholder="10 digit mobile number"
+                  />
+                  {detailErrors.phone ? <span className="mt-1 block text-xs text-red-400">{detailErrors.phone}</span> : null}
+                </label>
+              </div>
+
+              <div className="mt-5 flex gap-2">
+                {!settings.requireCustomerDetails ? (
+                  <button
+                    type="button"
+                    onClick={() => handlePlaceOrder({ skipDetails: true })}
+                    disabled={placing}
+                    className="flex-1 rounded-lg border border-border-theme py-3 text-sm font-semibold text-text-secondary transition hover:border-gold hover:text-gold disabled:opacity-50"
+                  >
+                    Skip
+                  </button>
+                ) : null}
+                <button
+                  type="button"
+                  onClick={() => handlePlaceOrder()}
+                  disabled={placing}
+                  className="btn-gold flex-1 py-3 text-sm font-semibold disabled:opacity-50"
+                >
+                  {placing ? "Submitting..." : "Submit Order"}
+                </button>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setDetailsOpen(false)}
+                disabled={placing}
+                className="mt-3 w-full rounded-lg py-2 text-xs text-text-muted transition hover:text-text-secondary disabled:opacity-50"
+              >
+                Back to cart
+              </button>
             </motion.div>
           </>
         ) : null}

@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
-import { Clock, ChefHat, Check } from 'lucide-react';
+import { Check, ChefHat, Clock, XCircle } from 'lucide-react';
 import toast from 'react-hot-toast';
 import AdminShell from '@/components/AdminShell';
 import { subscribeToOrders, subscribeToRestaurant, updateOrderStatus } from '@/lib/firestore';
@@ -13,19 +13,40 @@ const statusColors = {
   preparing: 'bg-blue-50 border-blue-200',
   served: 'bg-green-50 border-green-200',
   completed: 'bg-slate-50 border-slate-200',
+  rejected: 'bg-red-50 border-red-200',
 };
 
 const statusIcons = {
   pending: Clock,
   preparing: ChefHat,
   served: Check,
+  completed: Check,
+  rejected: XCircle,
 };
 
+const statusBadges = {
+  pending: 'bg-yellow-100 text-yellow-800 border-yellow-200',
+  preparing: 'bg-blue-100 text-blue-800 border-blue-200',
+  served: 'bg-green-100 text-green-800 border-green-200',
+  completed: 'bg-slate-100 text-slate-700 border-slate-200',
+  rejected: 'bg-red-100 text-red-800 border-red-200',
+};
+
+function displayStaffName(name) {
+  return name || 'Customer (QR)';
+}
+
 export default function LiveOrdersPage() {
-  const { loading, restaurantId, error: userError } = useCurrentUser({ allowedRoles: ['admin'] });
+  const { loading, user, profile, restaurantId, error: userError } = useCurrentUser({ allowedRoles: ['admin'] });
   const [restaurant, setRestaurant] = useState(null);
   const [orders, setOrders] = useState([]);
   const [error, setError] = useState('');
+  const [rejectConfirmId, setRejectConfirmId] = useState(null);
+
+  const actor = {
+    uid: user?.uid,
+    name: profile?.displayName || user?.displayName || user?.email || 'Admin',
+  };
 
   useEffect(() => {
     if (!restaurantId) return;
@@ -48,8 +69,9 @@ export default function LiveOrdersPage() {
   async function handleStatusChange(orderId, newStatus) {
     if (!restaurantId) return;
     try {
-      await updateOrderStatus(restaurantId, orderId, newStatus);
+      await updateOrderStatus(restaurantId, orderId, newStatus, actor);
       toast.success(`Order moved to ${newStatus}`);
+      setRejectConfirmId(null);
     } catch (err) {
       setError(err.message || 'Failed to update order');
       toast.error('Could not update order');
@@ -80,7 +102,7 @@ export default function LiveOrdersPage() {
   return (
     <AdminShell
       restaurantName={restaurant?.name}
-      activeOrders={orders.filter((o) => o.status !== 'completed').length}
+      activeOrders={orders.filter((o) => o.status !== 'completed' && o.status !== 'rejected').length}
     >
       <div className="space-y-6">
         <div>
@@ -99,31 +121,27 @@ export default function LiveOrdersPage() {
             {orders.map((order) => {
               const StatusIcon = statusIcons[order.status] || Clock;
               const nextStatus =
-                order.status === 'pending'
-                  ? 'preparing'
-                  : order.status === 'preparing'
-                    ? 'served'
-                    : order.status === 'served'
-                      ? 'completed'
-                      : null;
+                order.status === 'preparing'
+                  ? 'served'
+                  : order.status === 'served'
+                    ? 'completed'
+                    : null;
               const nextActionLabel =
-                order.status === 'pending'
-                  ? 'Start Cooking'
-                  : order.status === 'preparing'
-                    ? 'Mark Served'
-                    : order.status === 'served'
-                      ? 'Complete Order'
-                      : null;
+                order.status === 'preparing'
+                  ? 'Mark Served'
+                  : order.status === 'served'
+                    ? 'Complete Order'
+                    : null;
 
               return (
                 <motion.div
                   key={order.id}
                   initial={{ opacity: 0, y: 10 }}
                   animate={{ opacity: 1, y: 0 }}
-                  className={`card flex items-center justify-between border p-4 ${statusColors[order.status]}`}
+                  className={`card flex flex-col gap-4 border p-4 md:flex-row md:items-center md:justify-between ${statusColors[order.status] || statusColors.pending}`}
                 >
-                  <div className="flex items-center gap-4">
-                    <StatusIcon size={24} className="text-gold" />
+                  <div className="flex items-start gap-4">
+                    <StatusIcon size={24} className={order.status === 'rejected' ? 'text-red-600' : 'text-gold'} />
                     <div>
                       <p className="font-semibold">Table {order.tableNumber}</p>
                       <p className="text-sm text-text-muted">
@@ -133,7 +151,14 @@ export default function LiveOrdersPage() {
                       <p className="text-xs text-text-muted capitalize">
                         Payment: {order.paymentStatus || 'unpaid'}
                       </p>
-                      <div className="mt-1 flex flex-wrap gap-1">
+                      <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
+                        <span className={`rounded-full border px-2 py-0.5 font-semibold capitalize ${statusBadges[order.status] || statusBadges.pending}`}>
+                          {order.status || 'pending'}
+                        </span>
+                        <span className="text-text-muted">Created by: {displayStaffName(order.createdByName)}</span>
+                        <span className="text-text-muted">Last updated by: {displayStaffName(order.lastUpdatedByName)}</span>
+                      </div>
+                      <div className="mt-2 flex flex-wrap gap-1">
                         {order.items?.slice(0, 2).map((item, i) => (
                           <span key={i} className="inline-block rounded bg-text-muted/10 px-2 py-0.5 text-xs">
                             {item.quantity}x {item.name}
@@ -148,7 +173,40 @@ export default function LiveOrdersPage() {
                     </div>
                   </div>
 
-                  <div className="flex gap-2">
+                  <div className="flex flex-wrap justify-end gap-2">
+                    {order.status === 'pending' && (
+                      <>
+                        <button
+                          onClick={() => handleStatusChange(order.id, 'preparing')}
+                          className="rounded-lg bg-green-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-green-700"
+                        >
+                          Accept
+                        </button>
+                        {rejectConfirmId === order.id ? (
+                          <div className="flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-2 py-1">
+                            <button
+                              onClick={() => handleStatusChange(order.id, 'rejected')}
+                              className="rounded bg-red-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-red-700"
+                            >
+                              Confirm
+                            </button>
+                            <button
+                              onClick={() => setRejectConfirmId(null)}
+                              className="rounded border border-red-200 px-3 py-1.5 text-xs font-semibold text-red-700 transition hover:bg-red-100"
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        ) : (
+                          <button
+                            onClick={() => setRejectConfirmId(order.id)}
+                            className="rounded-lg border border-red-500 px-4 py-2 text-sm font-semibold text-red-600 transition hover:bg-red-50"
+                          >
+                            Reject
+                          </button>
+                        )}
+                      </>
+                    )}
                     {nextStatus && (
                       <button
                         onClick={() => handleStatusChange(order.id, nextStatus)}

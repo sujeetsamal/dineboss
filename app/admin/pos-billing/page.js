@@ -75,7 +75,7 @@ function BillPreviewModal({ isOpen, selectedOrder, restaurantSettings, paperSize
     setIsSaving(true)
     try {
       await onSaveDetails(selectedOrder)
-      toast.success('Bill updated successfully')
+      toast.success('Details saved')
     } catch (error) {
       console.error('Bill update failed:', error)
       toast.error('Bill update failed: ' + (error.message || 'Unknown error'))
@@ -382,7 +382,7 @@ function BillCalculations({ order, restaurantId, orderId, onUpdate, onLocalUpdat
 }
 
 export default function PosBillingPage() {
-  const { restaurantId } = useCurrentUser({ allowedRoles: ['admin', 'waiter', 'staff'] })
+  const { user, profile, restaurantId } = useCurrentUser({ allowedRoles: ['admin'] })
   
   // Orders data
   const [orders, setOrders] = useState([])
@@ -416,6 +416,15 @@ export default function PosBillingPage() {
 
   // Bill Preview Modal
   const [showBillPreview, setShowBillPreview] = useState(false)
+  const [actionsDrawerOpen, setActionsDrawerOpen] = useState(false)
+  const [chargesOpen, setChargesOpen] = useState(false)
+  const [customerOpen, setCustomerOpen] = useState(false)
+  const [customerDraft, setCustomerDraft] = useState({ orderId: null, customerName: '', customerPhone: '' })
+
+  const actor = {
+    uid: user?.uid,
+    name: profile?.displayName || user?.displayName || user?.email || 'Admin',
+  }
 
   // Subscribe to orders
   useEffect(() => {
@@ -517,6 +526,35 @@ export default function PosBillingPage() {
     return orders.find(o => o.id === selectedOrderId)
   }, [orders, selectedOrderId])
 
+  const selectedSummary = useMemo(() => {
+    if (!selectedOrder) {
+      return { totalAmount: 0, tax: 0, serviceCharge: 0, discountAmount: 0, finalAmount: 0 }
+    }
+    const details = getBillDetails(selectedOrder)
+    const discountAmount = details.discountType === 'percentage'
+      ? Math.round(details.totalAmount * (Number(details.discount || 0) / 100))
+      : Number(details.discount || 0)
+    return {
+      ...details,
+      discountAmount,
+    }
+  }, [selectedOrder])
+
+  const activeCustomerDraft = customerDraft.orderId === selectedOrderId
+    ? customerDraft
+    : {
+        orderId: selectedOrderId,
+        customerName: selectedOrder?.customerName || '',
+        customerPhone: selectedOrder?.customerPhone || '',
+      }
+
+  const updateCustomerDraft = (updates) => {
+    setCustomerDraft({
+      ...activeCustomerDraft,
+      ...updates,
+    })
+  }
+
   const syncOrderBillDetails = (orderId, updates = {}) => {
     setOrders(prevOrders => {
       const nextOrders = prevOrders.map(order => {
@@ -535,7 +573,11 @@ export default function PosBillingPage() {
     if (!restaurantId || !order?.id) return order
 
     const latestOrder = ordersRef.current.find(currentOrder => currentOrder.id === order.id) || order
-    const billDetails = getBillDetails(latestOrder, updates)
+    const billDetails = {
+      ...getBillDetails(latestOrder, updates),
+      ...(updates.customerName !== undefined ? { customerName: updates.customerName } : {}),
+      ...(updates.customerPhone !== undefined ? { customerPhone: updates.customerPhone } : {}),
+    }
     const updatedOrder = {
       ...latestOrder,
       ...billDetails,
@@ -544,9 +586,9 @@ export default function PosBillingPage() {
     syncOrderBillDetails(latestOrder.id, updates)
 
     try {
-      await updateOrderBillDetails(restaurantId, latestOrder.id, billDetails)
+      await updateOrderBillDetails(restaurantId, latestOrder.id, billDetails, actor)
       if (options.showSuccess) {
-        toast.success('Bill updated successfully')
+        toast.success(options.successMessage || 'Bill updated successfully')
       }
       return updatedOrder
     } catch (error) {
@@ -632,7 +674,10 @@ export default function PosBillingPage() {
         status: 'pending',
         paymentStatus: 'unpaid',
         paymentMethod: 'cash',
-        createdBy: 'Admin'
+        createdBy: user?.uid,
+        createdByName: profile?.displayName || user?.displayName || user?.email || 'Admin',
+        lastUpdatedBy: user?.uid,
+        lastUpdatedByName: profile?.displayName || user?.displayName || user?.email || 'Admin',
       })
       
       toast.success('Order created successfully')
@@ -650,7 +695,7 @@ export default function PosBillingPage() {
   const handleUpdateOrderStatus = async (newStatus) => {
     if (!restaurantId || !selectedOrderId) return
     try {
-      await updateOrderStatus(restaurantId, selectedOrderId, newStatus)
+      await updateOrderStatus(restaurantId, selectedOrderId, newStatus, actor)
       toast.success(`Order moved to ${newStatus}`)
     } catch (e) {
       console.error('Failed to update order status:', e)
@@ -662,7 +707,7 @@ export default function PosBillingPage() {
   const handleUpdatePaymentStatus = async (newStatus) => {
     if (!restaurantId || !selectedOrderId || !selectedOrder) return
     try {
-      await updateOrderPaymentStatus(restaurantId, selectedOrderId, newStatus, selectedOrder)
+      await updateOrderPaymentStatus(restaurantId, selectedOrderId, newStatus, selectedOrder, actor)
       toast.success(`Payment marked as ${newStatus}`)
     } catch (e) {
       console.error('Failed to update payment status:', e)
@@ -692,132 +737,25 @@ export default function PosBillingPage() {
     setShowBillPreview(true)
   }
 
-  // Build receipt HTML for printing
-  const buildPrintHTML = (order, restaurantSettings) => {
-    const paperSizePx = defaultPaperSize === '58mm' ? 232
-      : defaultPaperSize === '50mm' ? 200 : 320
-    
-    const subtotal = (order?.items || []).reduce((sum, item) =>
-      sum + ((parseFloat(item.price) || 0) * (parseInt(item.quantity) || 1)), 0);
-    const gstPct = parseFloat(order?.gstPercent) || 0;
-    const svcPct = parseFloat(order?.serviceChargePercent) || 0;
-    const discVal = parseFloat(order?.discount) || 0;
-    const gstAmt = Math.round(subtotal * gstPct / 100);
-    const svcAmt = Math.round(subtotal * svcPct / 100);
-    const discAmt = order?.discountType === 'percentage'
-      ? Math.round(subtotal * discVal / 100) : discVal;
-    const total = subtotal + gstAmt + svcAmt - discAmt;
-
-    return `
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <meta charset="UTF-8">
-        <style>
-          * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-          }
-          body {
-            width: ${paperSizePx}px;
-            background: white;
-            color: black;
-            font-family: 'Courier New', Courier, monospace;
-            font-size: 12px;
-            line-height: 1.6;
-            padding: 16px;
-          }
-          .receipt-section { margin-bottom: 8px; }
-          .header { text-align: center; font-weight: bold; font-size: 14px; margin-bottom: 4px; }
-          .subtitle { text-align: center; font-size: 11px; }
-          .divider { border-top: 1px dashed black; margin: 6px 0; }
-          .divider-solid { border-top: 1px solid black; margin: 6px 0; }
-          .row { display: flex; justify-content: space-between; margin-bottom: 2px; }
-          .item-row { display: flex; justify-content: space-between; gap: 8px; }
-          .item-name { flex: 1; }
-          .item-qty { width: 30px; text-align: center; }
-          .item-amount { width: 60px; text-align: right; }
-          .total-row { font-weight: bold; font-size: 14px; }
-          .footer { text-align: center; font-size: 11px; margin-top: 8px; }
-        </style>
-      </head>
-      <body>
-        <div class="header">${restaurantSettings?.restaurantName || restaurantSettings?.name || 'Restaurant'}</div>
-        ${restaurantSettings?.address ? `<div class="subtitle">${restaurantSettings.address}</div>` : ''}
-        ${restaurantSettings?.gstNumber ? `<div class="subtitle">GSTIN: ${restaurantSettings.gstNumber}</div>` : ''}
-        
-        <div class="divider"></div>
-        
-        <div class="receipt-section">
-          <div class="row"><span>Order: #${String(order?.id || '').substring(0, 8)}</span><span>Table: ${order?.tableName || 'N/A'}</span></div>
-          <div>Date: ${new Date().toLocaleDateString('en-IN')}</div>
-          ${order?.staffName ? `<div>Staff: ${order.staffName}</div>` : ''}
-        </div>
-        
-        <div class="divider"></div>
-        
-        <div class="receipt-section">
-          <div class="row" style="font-weight: bold;">
-            <span style="flex: 1;">Item</span>
-            <span style="width: 30px; text-align: center;">Qty</span>
-            <span style="width: 60px; text-align: right;">Amount</span>
-          </div>
-          <div class="divider"></div>
-          ${(order?.items || []).map(item => {
-            const itemTotal = (parseFloat(item.price) || 0) * (parseInt(item.quantity) || 1);
-            return `
-              <div class="item-row">
-                <span class="item-name">${item.name}</span>
-                <span class="item-qty">${item.quantity}x</span>
-                <span class="item-amount">₹${itemTotal}</span>
-              </div>
-            `;
-          }).join('')}
-        </div>
-        
-        <div class="divider"></div>
-        
-        <div class="receipt-section">
-          <div class="row"><span>Subtotal</span><span>₹${subtotal}</span></div>
-          ${gstPct > 0 ? `<div class="row"><span>GST (${gstPct}%)</span><span>₹${gstAmt}</span></div>` : ''}
-          ${svcPct > 0 ? `<div class="row"><span>Service (${svcPct}%)</span><span>₹${svcAmt}</span></div>` : ''}
-          ${discAmt > 0 ? `<div class="row"><span>Discount</span><span>-₹${discAmt}</span></div>` : ''}
-          <div class="divider-solid"></div>
-          <div class="row total-row"><span>TOTAL</span><span>₹${total}</span></div>
-          <div class="row" style="margin-top: 4px;"><span>Payment</span><span>${order?.paymentMethod || 'Cash'}</span></div>
-          <div class="divider"></div>
-          <div class="footer">${restaurantSettings?.thankYouMessage || 'Thank you for dining with us!'}</div>
-          <div class="footer">Please visit again</div>
-        </div>
-      </body>
-      </html>
-    `;
+  const handleSaveDetailsAction = async () => {
+    if (!selectedOrder) return
+    await handleSaveBillDetails(
+      selectedOrder,
+      {
+        customerName: activeCustomerDraft.customerName,
+        customerPhone: activeCustomerDraft.customerPhone,
+      },
+      { showSuccess: true, successMessage: 'Details saved' }
+    )
+    setActionsDrawerOpen(false)
   }
 
   // Handle Confirm & Print from modal
   const handleConfirmPrint = async (order, restaurantSettings, paperSize) => {
     const updatedOrder = await handleSaveBillDetails(order)
-    const htmlContent = buildPrintHTML(updatedOrder, restaurantSettings || restaurant || {});
-    
-    if (typeof window !== 'undefined' && window.electronAPI?.isElectron) {
-      // In Electron: use IPC to print to PDF
-      try {
-        const result = await window.electronAPI.printToPDF(htmlContent, paperSize)
-        if (result.success) {
-          toast.success('✓ Bill sent to printer')
-        } else {
-          toast.error('Print failed: ' + (result.error || 'Unknown error'))
-        }
-      } catch (error) {
-        console.error('Electron print failed:', error)
-        toast.error('Print failed')
-      }
-    } else {
-      // In browser: use iframe fallback
-      printReceipt(htmlContent, paperSize)
-      toast.success('✓ Bill printed')
-    }
+    const htmlContent = buildReceiptHTML(updatedOrder, restaurantSettings || restaurant || {});
+    await printReceipt(htmlContent, paperSize)
+    toast.success('Bill sent to printer')
   }
 
   const getStatusColor = (status) => {
@@ -826,6 +764,7 @@ export default function PosBillingPage() {
       case 'preparing': return 'bg-blue-900/30 text-blue-200'
       case 'served': return 'bg-cyan-900/30 text-cyan-200'
       case 'completed': return 'bg-green-900/30 text-green-200'
+      case 'rejected': return 'bg-red-900/30 text-red-200'
       default: return 'bg-gray-900/30 text-gray-200'
     }
   }
@@ -891,6 +830,7 @@ export default function PosBillingPage() {
                     <option value="preparing">Preparing</option>
                     <option value="served">Served</option>
                     <option value="completed">Completed</option>
+                    <option value="rejected">Rejected</option>
                   </select>
                 </div>
 
@@ -930,7 +870,7 @@ export default function PosBillingPage() {
                         onDoubleClick={() => setSelectedOrderId(order.id)}
                         className="font-mono font-bold text-amber-500 flex-1 cursor-pointer hover:text-amber-400"
                       >
-                        #{order.id?.slice(-6).toUpperCase()}
+                        {order.billId || `#${order.id?.slice(-6).toUpperCase()}`}
                       </span>
                       <span className="text-xs text-gray-400 mr-2">T{order.tableNumber}</span>
                       <button
@@ -1007,10 +947,15 @@ export default function PosBillingPage() {
                 ← Back to Orders
               </button>
 
+              <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_300px]">
+                <div className="min-w-0 space-y-4">
+
               {/* Order Header */}
               <div className="border-b border-gray-800 pb-4 mb-4">
                 <div className="flex items-baseline justify-between mb-3">
-                  <h2 className="text-2xl font-bold font-mono text-amber-500">#{selectedOrder.id?.slice(-6).toUpperCase()}</h2>
+                  <h2 className="text-2xl font-bold font-mono text-amber-500">
+                    {selectedOrder.billId || `#${selectedOrder.id?.slice(-6).toUpperCase()}`}
+                  </h2>
                   <span className="text-sm text-gray-400">Table {selectedOrder.tableNumber}</span>
                 </div>
                 <p className="text-xs text-gray-500">
@@ -1021,6 +966,10 @@ export default function PosBillingPage() {
                       ).toLocaleString()
                     : "N/A"}
                 </p>
+                <div className="mt-2 space-y-1 text-xs text-gray-400">
+                  <p>Created by: {selectedOrder.createdByName || 'Customer (QR)'}</p>
+                  <p>Last updated by: {selectedOrder.lastUpdatedByName || 'Customer (QR)'}</p>
+                </div>
               </div>
 
               {/* Bill Items Section */}
@@ -1085,16 +1034,66 @@ export default function PosBillingPage() {
                 </button>
               </div>
 
+              {/* Customer Details Section */}
+              <div className="border-b border-gray-800 pb-4">
+                <button
+                  type="button"
+                  onClick={() => setCustomerOpen((value) => !value)}
+                  className="flex w-full items-center justify-between text-left"
+                >
+                  <span className="text-lg font-semibold text-white">Customer Details</span>
+                  <span className="text-sm text-amber-400">{customerOpen ? 'Hide' : 'Show'}</span>
+                </button>
+                {customerOpen && (
+                  <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                    <label className="block">
+                      <span className="mb-1 block text-xs text-gray-400">Name</span>
+                      <input
+                        value={activeCustomerDraft.customerName}
+                        onChange={(e) => updateCustomerDraft({ customerName: e.target.value })}
+                        placeholder="Customer name"
+                        className="w-full rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-white outline-none focus:border-amber-500"
+                      />
+                    </label>
+                    <label className="block">
+                      <span className="mb-1 block text-xs text-gray-400">Phone</span>
+                      <input
+                        value={activeCustomerDraft.customerPhone}
+                        onChange={(e) => {
+                          const digits = e.target.value.replace(/\D/g, '').slice(0, 10)
+                          updateCustomerDraft({ customerPhone: digits })
+                        }}
+                        inputMode="numeric"
+                        placeholder="Mobile number"
+                        className="w-full rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-white outline-none focus:border-amber-500"
+                      />
+                    </label>
+                  </div>
+                )}
+              </div>
+
               {/* Calculations Section */}
-              <div className="border-b border-gray-800 pb-4 mb-4">
-                <BillCalculations 
-                  key={selectedOrder.id}
-                  order={selectedOrder}
-                  restaurantId={restaurantId}
-                  orderId={selectedOrderId}
-                  onLocalUpdate={(updates) => syncOrderBillDetails(selectedOrderId, updates)}
-                  onUpdate={(updates) => handleSaveBillDetails(selectedOrder, updates)}
-                />
+              <div className="border-b border-gray-800 pb-4">
+                <button
+                  type="button"
+                  onClick={() => setChargesOpen((value) => !value)}
+                  className="flex w-full items-center justify-between text-left"
+                >
+                  <span className="text-lg font-semibold text-white">Service Charge & Discount</span>
+                  <span className="text-sm text-amber-400">{chargesOpen ? 'Hide' : 'Show'}</span>
+                </button>
+                {chargesOpen && (
+                  <div className="mt-3">
+                    <BillCalculations 
+                      key={selectedOrder.id}
+                      order={selectedOrder}
+                      restaurantId={restaurantId}
+                      orderId={selectedOrderId}
+                      onLocalUpdate={(updates) => syncOrderBillDetails(selectedOrderId, updates)}
+                      onUpdate={(updates) => handleSaveBillDetails(selectedOrder, updates)}
+                    />
+                  </div>
+                )}
               </div>
 
               {/* Payment Section */}
@@ -1184,21 +1183,75 @@ export default function PosBillingPage() {
                 </p>
               </div>
 
-              {/* Print Button */}
-              <div className="space-y-2">
-                <p className="text-xs text-gray-500">Paper: {defaultPaperSize}</p>
-                <div className="grid grid-cols-2 gap-2">
+                </div>
+
+                <aside className="hidden self-start rounded-xl border border-gray-800 bg-gray-950 p-4 md:sticky md:top-4 md:block">
+                  <h3 className="text-lg font-semibold text-white">Order Summary</h3>
+                  <div className="mt-3 space-y-2 text-sm">
+                    <div className="flex justify-between text-gray-300">
+                      <span>Subtotal</span>
+                      <span>₹{Number(selectedSummary.totalAmount || 0).toFixed(0)}</span>
+                    </div>
+                    <div className="flex justify-between text-gray-300">
+                      <span>GST</span>
+                      <span>₹{Number(selectedSummary.tax || 0).toFixed(0)}</span>
+                    </div>
+                    <div className="flex justify-between text-gray-300">
+                      <span>Service</span>
+                      <span>₹{Number(selectedSummary.serviceCharge || 0).toFixed(0)}</span>
+                    </div>
+                    <div className="flex justify-between text-gray-300">
+                      <span>Discount</span>
+                      <span>-₹{Number(selectedSummary.discountAmount || 0).toFixed(0)}</span>
+                    </div>
+                    <div className="border-t border-gray-700 pt-3 flex justify-between text-lg font-bold text-amber-400">
+                      <span>Grand Total</span>
+                      <span>₹{Number(selectedSummary.finalAmount || 0).toFixed(0)}</span>
+                    </div>
+                  </div>
+                  <div className="mt-4 grid gap-2">
+                    <button
+                      onClick={handleSaveDetailsAction}
+                      className="rounded-lg bg-gray-800 px-4 py-3 text-sm font-semibold text-white transition hover:bg-gray-700"
+                    >
+                      Save Details
+                    </button>
+                    <button
+                      onClick={() => handleUpdatePaymentStatus('paid')}
+                      disabled={selectedOrder.paymentStatus === 'paid'}
+                      className="rounded-lg bg-green-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {selectedOrder.paymentStatus === 'paid' ? 'Paid' : 'Mark Paid'}
+                    </button>
+                    <button
+                      onClick={handlePrintBill}
+                      className="rounded-lg bg-amber-500 px-4 py-3 text-sm font-semibold text-black transition hover:bg-amber-600"
+                    >
+                      Print Bill
+                    </button>
+                    <button
+                      onClick={() => printKOT(selectedOrder, defaultPaperSize)}
+                      className="rounded-lg border border-amber-500 px-4 py-3 text-sm font-semibold text-amber-400 transition hover:bg-amber-500 hover:text-black"
+                    >
+                      Print KOT
+                    </button>
+                  </div>
+                  <p className="mt-3 text-xs text-gray-500">Paper: {defaultPaperSize}</p>
+                </aside>
+              </div>
+
+              <div className="fixed inset-x-0 bottom-0 z-40 border-t border-gray-800 bg-gray-950 p-3 md:hidden">
+                <div className="mx-auto flex max-w-md items-center justify-between gap-3">
+                  <div>
+                    <p className="text-xs text-gray-400">Grand Total</p>
+                    <p className="text-lg font-bold text-amber-400">₹{Number(selectedSummary.finalAmount || 0).toFixed(0)}</p>
+                  </div>
                   <button
-                    onClick={handlePrintBill}
-                    className="w-full bg-amber-500 hover:bg-amber-600 text-black font-semibold py-3 rounded-lg transition flex items-center justify-center gap-2 text-sm"
+                    type="button"
+                    onClick={() => setActionsDrawerOpen(true)}
+                    className="rounded-lg bg-amber-500 px-4 py-3 text-sm font-semibold text-black"
                   >
-                    🖨️ Print Bill
-                  </button>
-                  <button
-                    onClick={() => printKOT(selectedOrder, defaultPaperSize)}
-                    className="w-full border border-amber-500 text-amber-500 hover:bg-amber-500 hover:text-black font-semibold py-3 rounded-lg transition flex items-center justify-center gap-2 text-sm"
-                  >
-                    🍳 KOT
+                    View Actions
                   </button>
                 </div>
               </div>
@@ -1210,6 +1263,62 @@ export default function PosBillingPage() {
           )}
         </div>
       </div>
+
+      {selectedOrder && actionsDrawerOpen && (
+        <div className="fixed inset-0 z-50 bg-black/70 md:hidden" onClick={() => setActionsDrawerOpen(false)}>
+          <div
+            className="absolute inset-x-0 bottom-0 rounded-t-2xl border border-gray-800 bg-gray-950 p-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="mb-4 flex items-center justify-between">
+              <div>
+                <h3 className="text-lg font-semibold text-white">Actions</h3>
+                <p className="text-xs text-gray-400">Table {selectedOrder.tableNumber}</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setActionsDrawerOpen(false)}
+                className="rounded-lg border border-gray-700 px-3 py-2 text-sm text-gray-300"
+              >
+                Close
+              </button>
+            </div>
+            <div className="mb-4 rounded-xl border border-gray-800 bg-gray-900 p-3 text-sm">
+              <div className="flex justify-between text-gray-300">
+                <span>Grand Total</span>
+                <span className="font-bold text-amber-400">₹{Number(selectedSummary.finalAmount || 0).toFixed(0)}</span>
+              </div>
+            </div>
+            <div className="grid gap-2">
+              <button
+                onClick={handleSaveDetailsAction}
+                className="rounded-lg bg-gray-800 px-4 py-3 text-sm font-semibold text-white"
+              >
+                Save Details
+              </button>
+              <button
+                onClick={() => handleUpdatePaymentStatus('paid')}
+                disabled={selectedOrder.paymentStatus === 'paid'}
+                className="rounded-lg bg-green-600 px-4 py-3 text-sm font-semibold text-white disabled:opacity-60"
+              >
+                {selectedOrder.paymentStatus === 'paid' ? 'Paid' : 'Mark Paid'}
+              </button>
+              <button
+                onClick={handlePrintBill}
+                className="rounded-lg bg-amber-500 px-4 py-3 text-sm font-semibold text-black"
+              >
+                Print Bill
+              </button>
+              <button
+                onClick={() => printKOT(selectedOrder, defaultPaperSize)}
+                className="rounded-lg border border-amber-500 px-4 py-3 text-sm font-semibold text-amber-400"
+              >
+                Print KOT
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Create Bill Modal */}
       {createBillModalOpen && (
@@ -1474,7 +1583,10 @@ export default function PosBillingPage() {
         paperSize={defaultPaperSize}
         onClose={() => setShowBillPreview(false)}
         onConfirmPrint={handleConfirmPrint}
-        onSaveDetails={(order) => handleSaveBillDetails(order, {}, { showError: false })}
+        onSaveDetails={(order) => handleSaveBillDetails(order, {
+          customerName: activeCustomerDraft.customerName,
+          customerPhone: activeCustomerDraft.customerPhone,
+        }, { showError: false })}
       />
     </div>
   )

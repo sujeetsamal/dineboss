@@ -4,7 +4,7 @@ import { useEffect, useState, useRef } from 'react';
 import toast from 'react-hot-toast';
 import { Upload, X } from 'lucide-react';
 import AdminShell from '@/components/AdminShell';
-import { getRestaurant, updateRestaurant } from '@/lib/firestore';
+import { getRestaurant, getRestaurantSettings, updateRestaurant, updateRestaurantSettings } from '@/lib/firestore';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
 import { storage } from '@/lib/firebase';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
@@ -35,10 +35,20 @@ export default function SettingsPage() {
             showLogoOnBill: data.showLogoOnBill !== false,
             defaultPaperSize: data.defaultPaperSize || '80mm',
             thankYouMessage: data.thankYouMessage || 'Thank you for dining with us!',
+            requireCustomerDetails: false,
           });
         }
       })
       .catch((err) => setError(err.message || 'Failed to load settings'));
+  }, [restaurantId]);
+
+  useEffect(() => {
+    if (!restaurantId) return;
+    getRestaurantSettings(restaurantId)
+      .then((data) => {
+        setSettings((prev) => (prev ? { ...prev, ...data } : prev));
+      })
+      .catch((err) => console.warn('Failed to load order-flow settings:', err));
   }, [restaurantId]);
 
   // Load printers from Electron
@@ -156,6 +166,19 @@ export default function SettingsPage() {
       toast.error('Could not save settings');
     } finally {
       setIsSaving(false);
+    }
+  }
+
+  async function handleCustomerDetailsToggle(nextValue) {
+    if (!restaurantId || !settings) return;
+    const previous = settings.requireCustomerDetails;
+    setSettings({ ...settings, requireCustomerDetails: nextValue });
+    try {
+      await updateRestaurantSettings(restaurantId, { requireCustomerDetails: nextValue });
+      toast.success('Customer details setting saved');
+    } catch (err) {
+      setSettings({ ...settings, requireCustomerDetails: previous });
+      toast.error('Could not save customer details setting');
     }
   }
 
@@ -469,6 +492,38 @@ export default function SettingsPage() {
 
           <p className="text-xs text-text-muted">
             When enabled, the kitchen screen will play a notification sound and animate new orders.
+          </p>
+        </div>
+
+        {/* QR ORDER SETTINGS SECTION */}
+        <div className="card space-y-5 p-6">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h2 className="text-lg font-semibold text-gold">Customer Details on QR Order</h2>
+              <p className="mt-1 text-sm text-text-secondary">
+                When ON, customers must provide name and phone before placing order.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => handleCustomerDetailsToggle(!settings.requireCustomerDetails)}
+              className={`relative h-8 w-14 rounded-full border transition ${
+                settings.requireCustomerDetails
+                  ? 'border-gold bg-gold'
+                  : 'border-text-muted/30 bg-bg-secondary'
+              }`}
+              aria-pressed={settings.requireCustomerDetails}
+              aria-label="Toggle customer details on QR order"
+            >
+              <span
+                className={`absolute top-1 h-6 w-6 rounded-full bg-white transition ${
+                  settings.requireCustomerDetails ? 'left-7' : 'left-1'
+                }`}
+              />
+            </button>
+          </div>
+          <p className="text-xs text-text-muted">
+            Current: {settings.requireCustomerDetails ? 'ON - details required' : 'OFF - details optional'}
           </p>
         </div>
 

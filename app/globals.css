@@ -146,6 +146,33 @@ html.light body {
   font-size: 12px;
 }
 
+.badge-blue {
+  background: rgba(59, 130, 246, 0.2);
+  color: #93c5fd;
+  border: 1px solid rgba(59, 130, 246, 0.5);
+  border-radius: 999px;
+  padding: 2px 12px;
+  font-size: 12px;
+}
+
+.badge-cyan {
+  background: rgba(6, 182, 212, 0.2);
+  color: #67e8f9;
+  border: 1px solid rgba(6, 182, 212, 0.5);
+  border-radius: 999px;
+  padding: 2px 12px;
+  font-size: 12px;
+}
+
+.badge-gray {
+  background: rgba(107, 114, 128, 0.2);
+  color: #d1d5db;
+  border: 1px solid rgba(107, 114, 128, 0.5);
+  border-radius: 999px;
+  padding: 2px 12px;
+  font-size: 12px;
+}
+
 input,
 select,
 textarea {

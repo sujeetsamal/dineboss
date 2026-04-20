@@ -11,6 +11,7 @@ export function useCurrentUser({ allowedRoles = [], redirectTo = '/login' } = {}
   const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [user, setUser] = useState(null);
+  const [profile, setProfile] = useState(null);
   const [role, setRole] = useState(null);
   const [permissions, setPermissions] = useState({});
   const [restaurantId, setRestaurantId] = useState(null);
@@ -20,6 +21,7 @@ export function useCurrentUser({ allowedRoles = [], redirectTo = '/login' } = {}
     const unsubscribe = onAuthStateChanged(auth, async (authUser) => {
       if (!authUser) {
         setUser(null);
+        setProfile(null);
         setRole(null);
         setPermissions({});
         setRestaurantId(null);
@@ -46,6 +48,7 @@ export function useCurrentUser({ allowedRoles = [], redirectTo = '/login' } = {}
         const userPermissions = profile.permissions || getDefaultPermissionsForRole(profile.role);
 
         setUser(authUser);
+        setProfile(profile);
         setRole(profile.role);
         setPermissions(userPermissions);
         setRestaurantId(profile.restaurantId);
@@ -61,5 +64,5 @@ export function useCurrentUser({ allowedRoles = [], redirectTo = '/login' } = {}
     return unsubscribe;
   }, [allowedRoles, redirectTo, router]);
 
-  return { loading, user, role, permissions, restaurantId, error, setError };
+  return { loading, user, profile, role, permissions, restaurantId, error, setError };
 }

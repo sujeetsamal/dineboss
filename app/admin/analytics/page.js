@@ -277,12 +277,12 @@ export default function AdminAnalyticsPage() {
               {filteredBills.length > 0 ? (
                 filteredBills.slice(0, 50).map((bill) => (
                   <tr key={bill.id} className="border-b border-border-theme/50 hover:bg-bg-primary/50 transition">
-                    <td className="px-3 py-2 font-semibold text-gold">{bill.billNumber || "—"}</td>
+                    <td className="px-3 py-2 font-semibold text-gold">{bill.billId || bill.billNumber || "—"}</td>
                     <td className="px-3 py-2 text-text-secondary">
                       {bill.createdAtDate.toLocaleDateString("en-IN")} {bill.createdAtDate.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })}
                     </td>
                     <td className="px-3 py-2">#{bill.tableNumber || "—"}</td>
-                    <td className="px-3 py-2 text-text-secondary">{bill.waiterName || "N/A"}</td>
+                    <td className="px-3 py-2 text-text-secondary">{bill.createdByName || bill.waiterName || "Customer (QR)"}</td>
                     <td className="px-3 py-2 text-right font-semibold">₹{Number(bill.total || 0).toFixed(0)}</td>
                     <td className="px-3 py-2 text-center">
                       <button
@@ -315,7 +315,7 @@ export default function AdminAnalyticsPage() {
         <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/60 p-4">
           <div className="card w-full max-w-md overflow-y-auto max-h-[80vh] p-6">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="font-display text-2xl">Bill {selectedBill.billNumber}</h3>
+              <h3 className="font-display text-2xl">Bill {selectedBill.billId || selectedBill.billNumber}</h3>
               <button
                 onClick={() => setSelectedBill(null)}
                 className="text-text-secondary hover:text-text-primary transition"
@@ -335,7 +335,7 @@ export default function AdminAnalyticsPage() {
               </div>
               <div className="flex justify-between text-sm">
                 <span className="text-text-secondary">Waiter:</span>
-                <span>{selectedBill.waiterName || "N/A"}</span>
+                <span>{selectedBill.createdByName || selectedBill.waiterName || "Customer (QR)"}</span>
               </div>
               <div className="flex justify-between text-sm">
                 <span className="text-text-secondary">Payment:</span>

@@ -64,6 +64,17 @@ service cloud.firestore {
         allow read: if true;  // ✅ PUBLIC: Anyone can view categories
         allow create, update, delete: if isAdmin(restaurantId);  // Admin only
       }
+
+      // *** NESTED: PUBLIC ORDER-FLOW SETTINGS ***
+      match /settings/{settingsId} {
+        allow read: if true;
+        allow write: if isAdmin(restaurantId);
+      }
+
+      // *** NESTED: RESTAURANT META (COUNTERS, INTERNAL STATE) ***
+      match /meta/{metaId} {
+        allow read, write: if isStaff(restaurantId);
+      }
       
       // *** NESTED: BILLING (STAFF ONLY) ***
       match /bills/{billId} {
@@ -76,7 +87,8 @@ service cloud.firestore {
     match /orders/{restaurantId} {
       match /orders/{orderId} {
         allow create: if true;  // ✅ PUBLIC: Anyone can create orders (no auth needed)
-        allow read: if isStaff(restaurantId);  // Staff: view orders
+        allow get: if true;  // ✅ PUBLIC: QR customers can track their own unguessable order URL
+        allow list: if isStaff(restaurantId);  // Staff: view order queues
         allow update, delete: if isStaff(restaurantId);  // Staff: modify orders
       }
     }

@@ -48,7 +48,7 @@ function KitchenCard({ order, onAction, isNew }) {
 
 export default function KitchenPage() {
   const router = useRouter()
-  const { loading, restaurantId, error: userError } = useCurrentUser({ redirectTo: '/login' });
+  const { loading, user, profile, restaurantId, error: userError } = useCurrentUser({ redirectTo: '/login' });
   const [orders, setOrders] = useState([]);
   const [error, setError] = useState('');
   const [restaurantName, setRestaurantName] = useState('');
@@ -121,7 +121,10 @@ export default function KitchenPage() {
   async function setStatus(orderId, status) {
     if (!restaurantId) return;
     try {
-      await updateOrderStatus(restaurantId, orderId, status);
+      await updateOrderStatus(restaurantId, orderId, status, {
+        uid: user?.uid,
+        name: profile?.displayName || user?.displayName || user?.email || 'Kitchen',
+      });
       toast.success(`Order moved to ${status}`);
     } catch (updateError) {
       setError(updateError.message || 'Unable to update order');
