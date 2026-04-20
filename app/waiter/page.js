@@ -42,9 +42,6 @@ export default function WaiterPage() {
   const [savingChanges, setSavingChanges] = useState(false);
   const [updatingOrderStatus, setUpdatingOrderStatus] = useState(null);
   const [statusFilter, setStatusFilter] = useState("all"); // "all", "pending", "preparing", "served"
-  const [selectedOrdersForBulk, setSelectedOrdersForBulk] = useState(new Set());
-  const [bulkUpdating, setBulkUpdating] = useState(false);
-  const [showStatusHistory, setShowStatusHistory] = useState(null); // order ID to show history for
 
   // Estimated prep times (in minutes)
   const PREP_TIME_ESTIMATES = {
@@ -312,78 +309,6 @@ export default function WaiterPage() {
     }
   }
 
-  async function handleBulkStatusUpdate(newStatus) {
-    if (selectedOrdersForBulk.size === 0) {
-      toast.error("Select at least one order");
-      return;
-    }
-    if (!restaurantId) return;
-    setBulkUpdating(true);
-    let successCount = 0;
-    let failCount = 0;
-
-    try {
-      for (const orderId of selectedOrdersForBulk) {
-        try {
-          await updateOrderStatus(restaurantId, orderId, newStatus, {
-            uid: user?.uid,
-            name: profile?.displayName || user?.displayName || user?.email || "Waiter",
-          });
-          successCount++;
-        } catch (err) {
-          failCount++;
-          console.warn(`Failed to update order ${orderId}:`, err.message);
-        }
-      }
-
-      if (successCount > 0) {
-        toast.success(`Updated ${successCount} order${successCount > 1 ? "s" : ""} to ${newStatus}`);
-        setSelectedOrdersForBulk(new Set());
-      }
-      if (failCount > 0) {
-        toast.error(`Failed to update ${failCount} order${failCount > 1 ? "s" : ""}`);
-      }
-    } finally {
-      setBulkUpdating(false);
-    }
-  }
-
-  function toggleOrderSelection(orderId) {
-    const newSelected = new Set(selectedOrdersForBulk);
-    if (newSelected.has(orderId)) {
-      newSelected.delete(orderId);
-    } else {
-      newSelected.add(orderId);
-    }
-    setSelectedOrdersForBulk(newSelected);
-  }
-
-  function toggleAllOrdersSelection() {
-    if (selectedOrdersForBulk.size === filteredOrdersToday.length) {
-      setSelectedOrdersForBulk(new Set());
-    } else {
-      setSelectedOrdersForBulk(new Set(filteredOrdersToday.map(o => o.id)));
-    }
-  }
-
-  function toggleOrderSelection(orderId) {
-    const newSelected = new Set(selectedOrdersForBulk);
-    if (newSelected.has(orderId)) {
-      newSelected.delete(orderId);
-    } else {
-      newSelected.add(orderId);
-    }
-    setSelectedOrdersForBulk(newSelected);
-  }
-
-  function toggleAllOrdersSelection() {
-    if (selectedOrdersForBulk.size === filteredOrdersToday.length) {
-      setSelectedOrdersForBulk(new Set());
-    } else {
-      setSelectedOrdersForBulk(new Set(filteredOrdersToday.map(o => o.id)));
-    }
-  }
-
   if (loading) {
     return (
       <main className="mx-auto min-h-screen w-full max-w-md flex items-center justify-center px-4 py-4">
@@ -524,29 +449,32 @@ export default function WaiterPage() {
 
       {/* CONTENT: MY ORDERS TAB */}
       {activeTab === "myorders" && (
-        <section>
-          <h2 className="mb-4 font-display text-2xl">My Orders Today</h2>
+        <section className="pb-4">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="font-display text-2xl">My Orders</h2>
+            <span className="text-xs badge-amber">{myOrdersToday.length} Today</span>
+          </div>
 
           {/* Status Filter Controls */}
           {myOrdersToday.length > 0 && (
             <div className="mb-4 flex gap-2 overflow-x-auto pb-2">
               <button
                 onClick={() => setStatusFilter("all")}
-                className={`rounded-full border px-3 py-1 text-xs whitespace-nowrap font-semibold transition ${
+                className={`rounded-full border px-3 py-1.5 text-xs whitespace-nowrap font-semibold transition ${
                   statusFilter === "all" 
                     ? "border-gold bg-gold text-bg-primary" 
                     : "border-border-theme text-text-secondary hover:border-gold"
                 }`}
               >
-                All ({myOrdersToday.length})
+                All
               </button>
               {["pending", "preparing", "served"].map((status) => {
                 const count = myOrdersToday.filter(o => (o.status || "pending") === status).length;
-                return (
+                return count > 0 ? (
                   <button
                     key={status}
                     onClick={() => setStatusFilter(status)}
-                    className={`rounded-full border px-3 py-1 text-xs whitespace-nowrap font-semibold transition ${
+                    className={`rounded-full border px-3 py-1.5 text-xs whitespace-nowrap font-semibold transition ${
                       statusFilter === status 
                         ? "border-gold bg-gold text-bg-primary" 
                         : "border-border-theme text-text-secondary hover:border-gold"
@@ -554,201 +482,107 @@ export default function WaiterPage() {
                   >
                     {status.charAt(0).toUpperCase() + status.slice(1)} ({count})
                   </button>
-                );
+                ) : null;
               })}
             </div>
           )}
 
-          {/* Bulk Status Update Bar (only show when orders selected) */}
-          {selectedOrdersForBulk.size > 0 && filteredOrdersToday.length > 0 && (
-            <div className="mb-4 flex items-center justify-between gap-3 p-3 rounded-lg bg-bg-card border border-border-theme">
-              <span className="text-sm font-semibold text-gold">{selectedOrdersForBulk.size} selected</span>
-              <div className="flex gap-2">
-                {STATUS_OPTIONS.filter(opt => opt.value !== "pending").map(opt => (
-                  <button
-                    key={opt.value}
-                    onClick={() => handleBulkStatusUpdate(opt.value)}
-                    disabled={bulkUpdating}
-                    className={`text-xs font-semibold px-2 py-1 rounded border transition ${
-                      bulkUpdating ? "opacity-50 cursor-not-allowed" : `${opt.color} hover:opacity-80`
-                    }`}
-                  >
-                    {bulkUpdating ? "..." : `${opt.label}`}
-                  </button>
-                ))}
-                <button
-                  onClick={() => setSelectedOrdersForBulk(new Set())}
-                  className="text-xs font-semibold px-2 py-1 rounded border border-text-muted/30 text-text-muted hover:text-text-primary transition"
-                >
-                  Clear
-                </button>
-              </div>
-            </div>
-          )}
-
-          {/* Orders List */}
-          <div className="space-y-3">
+          {/* Orders List - Redesigned */}
+          <div className="space-y-2.5">
             {filteredOrdersToday.length > 0 ? (
-              filteredOrdersToday.map((order) => (
-                <motion.div key={order.id} initial={{ x: -8, opacity: 0 }} animate={{ x: 0, opacity: 1 }}>
-                  <div className={`card border-l-4 border-l-gold p-4 transition ${
-                    selectedOrdersForBulk.has(order.id) ? "ring-2 ring-gold bg-gold/5" : ""
-                  }`}>
-                    <div className="flex items-start justify-between gap-3 mb-3">
-                      {/* Checkbox for bulk selection */}
-                      <input
-                        type="checkbox"
-                        checked={selectedOrdersForBulk.has(order.id)}
-                        onChange={() => toggleOrderSelection(order.id)}
-                        className="w-5 h-5 rounded mt-0.5"
-                      />
+              filteredOrdersToday.map((order) => {
+                const currentStatus = order.status || "pending";
+                const canChangeStatus = currentStatus !== "completed" && currentStatus !== "served";
+                
+                return (
+                  <motion.div 
+                    key={order.id} 
+                    initial={{ x: -8, opacity: 0 }} 
+                    animate={{ x: 0, opacity: 1 }}
+                    className="group card border-0 rounded-xl p-3 transition hover:border-gold/50"
+                  >
+                    {/* Header: Table Number + Status Badge + Price */}
+                    <div className="flex items-start justify-between gap-3 mb-2.5">
+                      {/* Table Number - Primary Focus */}
+                      <div className="flex-shrink-0">
+                        <div className="flex items-center justify-center h-12 w-12 rounded-lg bg-gold/20 border border-gold/40">
+                          <span className="font-display text-lg font-bold text-gold">{order.tableNumber}</span>
+                        </div>
+                      </div>
 
+                      {/* Items Count + Status Badge */}
                       <div className="flex-1 min-w-0">
-                        <p className="font-semibold">Table {order.tableNumber}</p>
-                        <div className="mt-2 flex items-center justify-between gap-2">
-                          <span className={`inline-block rounded-full border px-2.5 py-1 text-xs font-semibold ${getStatusColor(order.status || "pending")}`}>
-                            {(order.status || "pending").charAt(0).toUpperCase() + (order.status || "pending").slice(1)}
+                        <p className="text-xs text-text-muted mb-1">{(order.items || []).length} item{(order.items || []).length !== 1 ? 's' : ''}</p>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className={`inline-block rounded-full border px-2.5 py-1 text-xs font-semibold ${getStatusColor(currentStatus)}`}>
+                            {currentStatus.charAt(0).toUpperCase() + currentStatus.slice(1)}
                           </span>
                           <span className="text-xs text-text-muted">{formatEstimatedTime(order)}</span>
                         </div>
                       </div>
 
-                      <div className="flex flex-col gap-2">
-                        <button
-                          type="button"
-                          onClick={() => setShowStatusHistory(order.id)}
-                          className="rounded border border-text-muted/30 px-2 py-1 text-xs font-semibold text-text-secondary hover:bg-bg-card transition"
-                          title="View status history"
-                        >
-                          📋
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => startEditingOrder(order)}
-                          className="rounded-lg border border-gold px-2 py-1 text-xs font-semibold text-gold transition hover:bg-gold/10"
-                        >
-                          Edit
-                        </button>
+                      {/* Price - Highlighted */}
+                      <div className="flex-shrink-0 text-right">
+                        <p className="text-sm text-text-muted">Total</p>
+                        <p className="text-lg font-bold text-gold">₹{order.items?.reduce((sum, item) => sum + (Number(item.price || 0) * Number(item.quantity || 0)), 0).toFixed(0) || 0}</p>
                       </div>
                     </div>
 
-                    {/* Status Update Controls */}
-                    {order.status !== "served" && order.status !== "completed" && (
-                      <div className="mb-3 flex gap-2">
-                        {STATUS_OPTIONS.filter(opt => {
-                          const currentStatus = order.status || "pending";
-                          // Allow transition logic
-                          if (currentStatus === "pending") return opt.value === "preparing";
-                          if (currentStatus === "preparing") return opt.value === "served";
-                          return false;
-                        }).map(opt => (
-                          <button
-                            key={opt.value}
-                            type="button"
-                            onClick={() => handleOrderStatusUpdate(order.id, opt.value)}
-                            disabled={updatingOrderStatus === order.id}
-                            className={`flex-1 rounded border px-2 py-1.5 text-xs font-semibold transition ${
-                              updatingOrderStatus === order.id 
-                                ? "opacity-50 cursor-not-allowed" 
-                                : `${opt.color} hover:opacity-80`
-                            }`}
-                          >
-                            {updatingOrderStatus === order.id ? "..." : `→ ${opt.label}`}
-                          </button>
-                        ))}
-                      </div>
-                    )}
-
-                    {/* Order Items */}
-                    <div className="mt-3 space-y-1 text-sm text-text-secondary">
+                    {/* Items List - Compact */}
+                    <div className="mb-2.5 space-y-1 text-xs text-text-secondary bg-bg-primary/50 rounded-lg px-2.5 py-2">
                       {(order.items || []).map((item, idx) => (
-                        <div key={`${order.id}-${idx}-${item.id || item.name}`} className="flex items-center justify-between">
-                          <span>{item.quantity}x {item.name}</span>
-                          <span>₹{Number(item.price || 0) * Number(item.quantity || 0)}</span>
+                        <div key={`${order.id}-${idx}-${item.id || item.name}`} className="flex items-center justify-between gap-2">
+                          <span className="truncate">{item.quantity}x {item.name}</span>
+                          <span className="flex-shrink-0">₹{(Number(item.price || 0) * Number(item.quantity || 0)).toFixed(0)}</span>
                         </div>
                       ))}
                     </div>
-                  </div>
-                </motion.div>
-              ))
+
+                    {/* Action Buttons - Bottom Row */}
+                    <div className="flex gap-2 items-center justify-between pt-2 border-t border-border-theme/50">
+                      {/* Status Update Button */}
+                      {canChangeStatus && (
+                        <>
+                          {currentStatus === "pending" ? (
+                            <button
+                              type="button"
+                              onClick={() => handleOrderStatusUpdate(order.id, "preparing")}
+                              disabled={updatingOrderStatus === order.id}
+                              className="flex-1 text-xs font-semibold px-3 py-1.5 rounded-lg border border-blue-500/50 text-blue-400 bg-blue-500/10 hover:bg-blue-500/20 transition disabled:opacity-50"
+                            >
+                              {updatingOrderStatus === order.id ? "..." : "→ Preparing"}
+                            </button>
+                          ) : currentStatus === "preparing" ? (
+                            <button
+                              type="button"
+                              onClick={() => handleOrderStatusUpdate(order.id, "served")}
+                              disabled={updatingOrderStatus === order.id}
+                              className="flex-1 text-xs font-semibold px-3 py-1.5 rounded-lg border border-green-500/50 text-green-400 bg-green-500/10 hover:bg-green-500/20 transition disabled:opacity-50"
+                            >
+                              {updatingOrderStatus === order.id ? "..." : "→ Served"}
+                            </button>
+                          ) : null}
+                        </>
+                      )}
+
+                      {/* Edit Button */}
+                      <button
+                        type="button"
+                        onClick={() => startEditingOrder(order)}
+                        className="text-xs font-semibold px-3 py-1.5 rounded-lg border border-gold/50 text-gold bg-gold/10 hover:bg-gold/20 transition whitespace-nowrap"
+                      >
+                        Edit Items
+                      </button>
+                    </div>
+                  </motion.div>
+                );
+              })
             ) : (
               <div className="card p-8 text-center text-text-muted">
-                <p>{statusFilter === "all" ? "No orders placed today yet." : `No ${statusFilter} orders.`}</p>
+                <p className="text-sm">{statusFilter === "all" ? "No orders placed today yet." : `No ${statusFilter} orders.`}</p>
               </div>
             )}
           </div>
-
-          {/* Status History Modal */}
-          {showStatusHistory && filteredOrdersToday.find(o => o.id === showStatusHistory) && (
-            <AnimatePresence>
-              <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                className="fixed inset-0 z-40 bg-black/60"
-                onClick={() => setShowStatusHistory(null)}
-              />
-              <motion.div
-                initial={{ y: "100%", opacity: 0 }}
-                animate={{ y: 0, opacity: 1 }}
-                exit={{ y: "100%", opacity: 0 }}
-                className="fixed inset-x-0 bottom-0 z-50 max-h-[70vh] overflow-y-auto rounded-t-2xl border border-border-theme bg-bg-card p-4 max-w-md mx-auto"
-                onClick={(e) => e.stopPropagation()}
-              >
-                <div className="mb-4 flex items-center justify-between">
-                  <h3 className="font-display text-xl">Status History</h3>
-                  <button
-                    onClick={() => setShowStatusHistory(null)}
-                    className="text-text-muted hover:text-text-primary transition"
-                  >
-                    ✕
-                  </button>
-                </div>
-
-                {(() => {
-                  const order = filteredOrdersToday.find(o => o.id === showStatusHistory);
-                  if (!order) return null;
-                  
-                  return (
-                    <div className="space-y-2">
-                      <p className="text-sm font-semibold mb-3">Table {order.tableNumber}</p>
-                      
-                      {(order.statusHistory || []).length > 0 ? (
-                        <div className="space-y-2">
-                          {(order.statusHistory || []).map((entry, idx) => {
-                            const timestamp = entry.changedAt;
-                            const date = new Date(timestamp);
-                            const time = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-                            
-                            return (
-                              <div key={idx} className="flex items-start gap-3 pb-2 border-b border-border-theme last:border-0">
-                                <div className="flex-shrink-0 mt-1">
-                                  <div className={`w-2 h-2 rounded-full ${
-                                    entry.status === "pending" ? "bg-orange-400" :
-                                    entry.status === "preparing" ? "bg-blue-400" :
-                                    entry.status === "served" ? "bg-green-400" :
-                                    entry.status === "completed" ? "bg-purple-400" :
-                                    "bg-gray-400"
-                                  }`} />
-                                </div>
-                                <div className="flex-1 min-w-0">
-                                  <p className="text-sm font-semibold capitalize">{entry.status}</p>
-                                  <p className="text-xs text-text-muted">{entry.label}</p>
-                                  <p className="text-xs text-text-muted mt-1">{time}</p>
-                                </div>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      ) : (
-                        <p className="text-sm text-text-muted">No status history available</p>
-                      )}
-                    </div>
-                  );
-                })()}
-              </motion.div>
-            </AnimatePresence>
-          )}
         </section>
       )}
 
