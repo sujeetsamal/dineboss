@@ -9,7 +9,7 @@ import { getRestaurant, subscribeToOrders, subscribeToTables, addTable, setTable
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 
 export default function AdminTablesPage() {
-  const { loading: authLoading, user, role, restaurantId, error, setError } = useCurrentUser({ allowedRoles: ["admin"] });
+  const { loading: authLoading, user, role, restaurantId, error, setError } = useCurrentUser({ allowedRoles: ["admin", "owner", "manager"] });
   const [restaurantName, setRestaurantName] = useState("");
   const [orders, setOrders] = useState([]);
   const [tables, setTables] = useState([]);

@@ -28,7 +28,14 @@ service cloud.firestore {
     function isAdmin(rId) {
       return hasUserDocument() && 
              getUserData().restaurantId == rId && 
-             getUserData().role == 'admin';
+             (getUserData().role == 'admin' || getUserData().role == 'owner');
+    }
+    
+    // ✅ NEW: Manager check - allows managers, admins, and owners
+    function isManager(rId) {
+      return hasUserDocument() && 
+             getUserData().restaurantId == rId && 
+             (getUserData().role == 'manager' || getUserData().role == 'admin' || getUserData().role == 'owner');
     }
     
     // ✅ FIXED: Staff check - works even if user document just created
@@ -59,13 +66,13 @@ service cloud.firestore {
       // QR codes need this - customers scan and see menu without login
       match /menu/{menuItemId} {
         allow read: if true;  // ✅ PUBLIC: Anyone can view menu items
-        allow create, update, delete: if isAdmin(restaurantId);  // Admin only
+        allow create, update, delete: if isManager(restaurantId);  // Manager/Admin only
       }
       
       // *** NESTED: CATEGORIES (PUBLIC READ) ***
       match /categories/{categoryId} {
         allow read: if true;  // ✅ PUBLIC: Anyone can view categories
-        allow create, update, delete: if isAdmin(restaurantId);  // Admin only
+        allow create, update, delete: if isManager(restaurantId);  // Manager/Admin only
       }
 
       // *** NESTED: PUBLIC ORDER-FLOW SETTINGS ***
@@ -79,9 +86,11 @@ service cloud.firestore {
         allow read, write: if isStaff(restaurantId);
       }
       
-      // *** NESTED: BILLING (STAFF ONLY) ***
+      // *** NESTED: BILLING (STAFF READ/CREATE, ADMIN DELETE) ***
       match /bills/{billId} {
-        allow read, write: if isStaff(restaurantId);
+        allow read: if isStaff(restaurantId);
+        allow create, update: if isStaff(restaurantId);
+        allow delete: if isAdmin(restaurantId);  // Only admin/owner can delete bills
       }
     }
 
@@ -100,21 +109,21 @@ service cloud.firestore {
     
     // *** USERS: AUTHENTICATED ONLY ***
     match /users/{userId} {
-      // ✅ FIXED: Allow user to create their OWN document OR admin can create for staff
+      // ✅ FIXED: Allow user to create their OWN document OR manager/admin can create for staff
       allow create: if isOwner(userId) || 
-                       (isAdmin(request.resource.data.restaurantId));
+                       (isManager(request.resource.data.restaurantId));
       
       // ✅ FIXED: Read access - user can read own doc, staff can read restaurant users
       allow read: if isOwner(userId) || 
                      (hasUserDocument() && 
                       getUserData().restaurantId == resource.data.restaurantId);
       
-      // ✅ FIXED: Update - user can update own doc OR admin can update restaurant users
+      // ✅ FIXED: Update - user can update own doc OR manager/admin can update restaurant users
       allow update: if isOwner(userId) || 
-                       isAdmin(resource.data.restaurantId);
+                       isManager(resource.data.restaurantId);
       
-      // Only admin can delete users
-      allow delete: if isAdmin(resource.data.restaurantId);
+      // Only manager/admin can delete users
+      allow delete: if isManager(resource.data.restaurantId);
     }
 
     // *** TABLES: STAFF ONLY ***

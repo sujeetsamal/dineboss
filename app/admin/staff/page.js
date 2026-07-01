@@ -24,7 +24,7 @@ function getInitials(value) {
 }
 
 export default function AdminStaffPage() {
-  const { loading: authLoading, user, role, restaurantId, error, setError } = useCurrentUser({ allowedRoles: ["admin"] });
+  const { loading: authLoading, user, role, restaurantId, error, setError } = useCurrentUser({ allowedRoles: ["admin", "owner", "manager"] });
   const [restaurantName, setRestaurantName] = useState("");
   const [tables, setTables] = useState([]);
   const [orders, setOrders] = useState([]);

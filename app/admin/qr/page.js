@@ -9,10 +9,8 @@ import AdminShell from "@/components/AdminShell";
 import { getRestaurant, subscribeToOrders, subscribeToTables, subscribeToMenu } from "@/lib/firestore";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 
-function getDomain() {
-  if (typeof window === "undefined") return "";
-  return window.location.origin;
-}
+const PUBLIC_APP_URL =
+  (process.env.NEXT_PUBLIC_APP_URL || "https://dineboss.vercel.app").replace(/\/+$/, "");
 
 function downloadBlob(blob, filename) {
   const url = URL.createObjectURL(blob);
@@ -24,7 +22,7 @@ function downloadBlob(blob, filename) {
 }
 
 export default function AdminQrPage() {
-  const { loading, user, role, restaurantId, error, setError } = useCurrentUser({ allowedRoles: ["admin"] });
+  const { loading, user, role, restaurantId, error, setError } = useCurrentUser({ allowedRoles: ["admin", "owner", "manager"] });
   const [restaurant, setRestaurant] = useState(null);
   const [tables, setTables] = useState([]);
   const [qrSearch, setQrSearch] = useState("");
@@ -57,7 +55,7 @@ export default function AdminQrPage() {
   );
 
   function qrValue(tableNumber) {
-    return `${getDomain()}/qr/${restaurantId}/${tableNumber}`;
+    return `${PUBLIC_APP_URL}/qr/${restaurantId}/${tableNumber}`;
   }
 
   async function downloadSingle(tableNumber) {

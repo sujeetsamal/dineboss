@@ -55,7 +55,7 @@ function formatBillDate(value) {
 }
 
 export default function BillHistoryPage() {
-  const { restaurantId } = useCurrentUser({ allowedRoles: ['admin'] })
+  const { restaurantId } = useCurrentUser({ allowedRoles: ['admin', 'owner', 'manager'] })
   const [bills, setBills] = useState([])
   const [range, setRange] = useState('today')
   const [format, setFormat] = useState('CSV')

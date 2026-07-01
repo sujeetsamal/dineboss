@@ -6,12 +6,11 @@ import { Upload, X } from 'lucide-react';
 import AdminShell from '@/components/AdminShell';
 import { getRestaurant, getRestaurantSettings, updateRestaurant, updateRestaurantSettings } from '@/lib/firestore';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
-import { storage } from '@/lib/firebase';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { uploadToCloudinary } from '@/lib/cloudinary';
 import DomainSettings from '@/components/DomainSettings';
 
 export default function SettingsPage() {
-  const { loading, restaurantId, error: userError } = useCurrentUser({ allowedRoles: ['admin'] });
+  const { loading, restaurantId, error: userError } = useCurrentUser({ allowedRoles: ['admin', 'owner'] });
   const [settings, setSettings] = useState(null);
   const [isSaving, setIsSaving] = useState(false);
   const [isUploadingLogo, setIsUploadingLogo] = useState(false);
@@ -39,6 +38,7 @@ export default function SettingsPage() {
             thankYouMessage: data.thankYouMessage || 'Thank you for dining with us!',
             requireCustomerDetails: false,
             enableCustomerQRPayment: data.enableCustomerQRPayment !== false,
+            qrPaymentTiming: data.qrPaymentTiming || 'completion',
           });
         }
       })
@@ -115,9 +115,7 @@ export default function SettingsPage() {
 
     setIsUploadingLogo(true);
     try {
-      const storageRef = ref(storage, `restaurants/${restaurantId}/logo`);
-      await uploadBytes(storageRef, file);
-      const logoUrl = await getDownloadURL(storageRef);
+      const logoUrl = await uploadToCloudinary(file);
       setSettings({ ...settings, logoUrl });
       toast.success('Logo uploaded successfully');
     } catch (err) {
@@ -143,9 +141,7 @@ export default function SettingsPage() {
 
     setIsUploadingPaymentQR(true);
     try {
-      const storageRef = ref(storage, `restaurants/${restaurantId}/payment_qr`);
-      await uploadBytes(storageRef, file);
-      const paymentQRUrl = await getDownloadURL(storageRef);
+      const paymentQRUrl = await uploadToCloudinary(file);
       setSettings({ ...settings, paymentQRUrl });
       toast.success('Payment QR uploaded successfully');
     } catch (err) {
@@ -192,6 +188,7 @@ export default function SettingsPage() {
         defaultPaperSize: settings.defaultPaperSize || '80mm',
         thankYouMessage: settings.thankYouMessage || 'Thank you for dining with us!',
         enableCustomerQRPayment: settings.enableCustomerQRPayment !== false,
+        qrPaymentTiming: settings.qrPaymentTiming || 'completion',
       });
       toast.success('Settings saved');
     } catch (err) {
@@ -624,12 +621,44 @@ export default function SettingsPage() {
                 onChange={(e) => setSettings({ ...settings, enableCustomerQRPayment: e.target.checked })}
                 className="w-4 h-4 rounded border-text-muted/30 text-gold"
               />
-              <span className="ml-2 text-sm text-text-secondary">Show payment QR in order completion</span>
+              <span className="ml-2 text-sm text-text-secondary">Enable Customer QR Payment</span>
             </label>
           </div>
-          <p className="text-xs text-text-muted">
-            When enabled, customers will see the payment QR code when their order is completed.
-          </p>
+          
+          {settings.enableCustomerQRPayment !== false && (
+            <div className="pl-6 space-y-3">
+              <label className="block text-sm font-medium text-text-secondary">Payment QR Display Timing</label>
+              <div className="flex flex-col gap-2 sm:flex-row sm:gap-6">
+                <label className="flex items-center cursor-pointer text-sm text-text-secondary">
+                  <input
+                    type="radio"
+                    name="qrPaymentTiming"
+                    value="immediate"
+                    checked={settings.qrPaymentTiming === 'immediate'}
+                    onChange={() => setSettings({ ...settings, qrPaymentTiming: 'immediate' })}
+                    className="w-4 h-4 text-gold border-text-muted/30 mr-2 focus:ring-gold"
+                  />
+                  Immediately after order is placed (Pending)
+                </label>
+                <label className="flex items-center cursor-pointer text-sm text-text-secondary">
+                  <input
+                    type="radio"
+                    name="qrPaymentTiming"
+                    value="completion"
+                    checked={settings.qrPaymentTiming !== 'immediate'}
+                    onChange={() => setSettings({ ...settings, qrPaymentTiming: 'completion' })}
+                    className="w-4 h-4 text-gold border-text-muted/30 mr-2 focus:ring-gold"
+                  />
+                  Only after order is completed (Completed)
+                </label>
+              </div>
+              <p className="text-xs text-text-muted">
+                {settings.qrPaymentTiming === 'immediate' 
+                  ? "Customers pay immediately after ordering. Staff accepts/rejects order in POS after manual verification." 
+                  : "Customers pay at the end of their meal after staff marks the order as completed."}
+              </p>
+            </div>
+          )}
         </div>
         <div className="card space-y-5 p-6">
           <h2 className="text-lg font-semibold text-gold">Thermal Printer Settings</h2>

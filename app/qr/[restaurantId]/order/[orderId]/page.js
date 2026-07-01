@@ -26,6 +26,7 @@ export default function CustomerOrderTrackingPage() {
   const [restaurantName, setRestaurantName] = useState("");
   const [paymentQRUrl, setPaymentQRUrl] = useState("");
   const [enableCustomerQRPayment, setEnableCustomerQRPayment] = useState(true);
+  const [qrPaymentTiming, setQrPaymentTiming] = useState("completion");
   const [error, setError] = useState("");
   const [showSuccess, setShowSuccess] = useState(true);
 
@@ -42,6 +43,7 @@ export default function CustomerOrderTrackingPage() {
         setRestaurantName(restaurant?.name || "");
         setPaymentQRUrl(restaurant?.paymentQRUrl || "");
         setEnableCustomerQRPayment(restaurant?.enableCustomerQRPayment !== false);
+        setQrPaymentTiming(restaurant?.qrPaymentTiming || "completion");
       },
       (err) => setError(err.message || "Unable to load restaurant")
     );
@@ -145,6 +147,7 @@ export default function CustomerOrderTrackingPage() {
               <OrderStatusAnimation 
                 status={order.status} 
                 paymentQRUrl={enableCustomerQRPayment ? paymentQRUrl : null}
+                qrPaymentTiming={qrPaymentTiming}
               />
             )}
 

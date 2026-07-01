@@ -37,7 +37,7 @@ function displayStaffName(name) {
 }
 
 export default function LiveOrdersPage() {
-  const { loading, user, profile, restaurantId, error: userError } = useCurrentUser({ allowedRoles: ['admin'] });
+  const { loading, user, profile, restaurantId, error: userError } = useCurrentUser({ allowedRoles: ['admin', 'owner', 'manager'] });
   const [restaurant, setRestaurant] = useState(null);
   const [orders, setOrders] = useState([]);
   const [error, setError] = useState('');

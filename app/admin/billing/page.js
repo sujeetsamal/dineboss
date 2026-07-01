@@ -43,7 +43,7 @@ const PLANS = [
 ];
 
 export default function BillingPage() {
-  const { loading, user, restaurantId, error, setError } = useCurrentUser({ allowedRoles: ["admin"] });
+  const { loading, user, restaurantId, error, setError } = useCurrentUser({ allowedRoles: ["admin", "owner", "manager"] });
   const [restaurant, setRestaurant] = useState(null);
   const [upgrading, setUpgrading] = useState(false);
 

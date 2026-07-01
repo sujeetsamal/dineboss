@@ -34,7 +34,7 @@ function StatCard({ title, value, subtitle, valueClass = "" }) {
 }
 
 export default function AdminPage() {
-  const { loading, user, profile, role, restaurantId, error, setError } = useCurrentUser({ allowedRoles: ["admin"] });
+  const { loading, user, profile, role, restaurantId, error, setError } = useCurrentUser({ allowedRoles: ["admin", "owner", "manager"] });
   const [restaurant, setRestaurant] = useState(null);
   const [orders, setOrders] = useState([]);
   const [tables, setTables] = useState([]);

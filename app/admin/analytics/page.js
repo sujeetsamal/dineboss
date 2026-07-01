@@ -22,7 +22,7 @@ import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { sameDay } from "@/lib/dateUtils";
 
 export default function AdminAnalyticsPage() {
-  const { loading, user, role, restaurantId, error, setError } = useCurrentUser({ allowedRoles: ["admin"] });
+  const { loading, user, role, restaurantId, error, setError } = useCurrentUser({ allowedRoles: ["admin", "owner", "manager"] });
   const [restaurant, setRestaurant] = useState(null);
   const [orders, setOrders] = useState([]);
   const [tables, setTables] = useState([]);

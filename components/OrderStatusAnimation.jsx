@@ -3,7 +3,7 @@
 import { motion } from 'framer-motion';
 
 // Animated icon for order received
-export const OrderReceivedAnimation = () => (
+export const OrderReceivedAnimation = ({ paymentQRUrl }) => (
   <motion.div className="flex flex-col items-center justify-center py-8">
     <motion.div
       initial={{ scale: 0 }}
@@ -43,7 +43,28 @@ export const OrderReceivedAnimation = () => (
       </motion.svg>
     </motion.div>
     <h2 className="text-center font-display text-2xl text-green-300">Your order has been received</h2>
-    <p className="mt-2 text-center text-sm text-slate-300">Our kitchen has started preparing your delicious meal!</p>
+    <p className="mt-2 text-center text-sm text-slate-300">
+      {paymentQRUrl 
+        ? "Please scan the QR code to complete your payment. The staff will accept your order once payment is verified." 
+        : "Our kitchen has started preparing your delicious meal!"}
+    </p>
+    
+    {paymentQRUrl && (
+      <motion.div
+        initial={{ opacity: 0, scale: 0.95 }}
+        animate={{ opacity: 1, scale: 1 }}
+        transition={{ delay: 0.5 }}
+        className="mt-6 rounded-xl border border-green-400/30 bg-green-400/5 p-4 flex flex-col items-center"
+      >
+        <p className="text-xs font-semibold text-green-300 mb-3 text-center uppercase tracking-wide">Scan to pay via UPI</p>
+        <motion.img
+          src={paymentQRUrl}
+          alt="Payment QR Code"
+          className="h-40 w-40 rounded-lg border border-green-400/50 bg-white p-2"
+          whileHover={{ scale: 1.05 }}
+        />
+      </motion.div>
+    )}
   </motion.div>
 );
 
@@ -227,16 +248,16 @@ export const PaymentAnimation = ({ paymentQRUrl }) => (
 );
 
 // Main component that selects which animation to show
-export default function OrderStatusAnimation({ status, paymentQRUrl }) {
+export default function OrderStatusAnimation({ status, paymentQRUrl, qrPaymentTiming = 'completion' }) {
   switch (status) {
     case 'pending':
-      return <OrderReceivedAnimation />;
+      return <OrderReceivedAnimation paymentQRUrl={qrPaymentTiming === 'immediate' ? paymentQRUrl : null} />;
     case 'preparing':
       return <CookingAnimation />;
     case 'served':
       return <ServedAnimation />;
     case 'completed':
-      return <PaymentAnimation paymentQRUrl={paymentQRUrl} />;
+      return <PaymentAnimation paymentQRUrl={qrPaymentTiming === 'completion' ? paymentQRUrl : null} />;
     default:
       return null;
   }

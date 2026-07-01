@@ -7,8 +7,7 @@ import toast from "react-hot-toast";
 import AdminShell from "@/components/AdminShell";
 import { subscribeToRestaurant, subscribeToOrders, subscribeToTables, subscribeToMenu, addMenuItem, updateMenuItem, deleteMenuItem } from "@/lib/firestore";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
-import { storage } from "@/lib/firebase";
-import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
+import { uploadToCloudinary } from "@/lib/cloudinary";
 
 const DEFAULT_FORM = {
   name: "",
@@ -28,7 +27,7 @@ function categoryBadge(category) {
 }
 
 export default function AdminMenuPage() {
-  const { loading: authLoading, user, role, restaurantId, error, setError } = useCurrentUser({ allowedRoles: ["admin"] });
+  const { loading: authLoading, user, role, restaurantId, error, setError } = useCurrentUser({ allowedRoles: ["admin", "owner", "manager"] });
   const [restaurantName, setRestaurantName] = useState("");
   const [tables, setTables] = useState([]);
   const [orders, setOrders] = useState([]);
@@ -150,10 +149,7 @@ export default function AdminMenuPage() {
       // Upload image if a new file is selected
       if (imageFile) {
         setUploading(true);
-        const imagePath = `restaurants/${restaurantId}/menu/${Date.now()}_${imageFile.name}`;
-        const imageRef = ref(storage, imagePath);
-        await uploadBytes(imageRef, imageFile);
-        imageUrl = await getDownloadURL(imageRef);
+        imageUrl = await uploadToCloudinary(imageFile);
       }
       
       const payload = {

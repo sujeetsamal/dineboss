@@ -382,7 +382,7 @@ function BillCalculations({ order, restaurantId, orderId, onUpdate, onLocalUpdat
 }
 
 export default function PosBillingPage() {
-  const { user, profile, restaurantId } = useCurrentUser({ allowedRoles: ['admin'] })
+  const { user, profile, restaurantId } = useCurrentUser({ allowedRoles: ['admin', 'owner', 'manager'] })
   
   // Orders data
   const [orders, setOrders] = useState([])

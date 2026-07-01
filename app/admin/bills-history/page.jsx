@@ -30,7 +30,7 @@ function displayStaffName(name) {
 export default function BillsHistoryPage() {
   const router = useRouter();
   const { loading, restaurantId, error: userError } = useCurrentUser({
-    allowedRoles: ["admin"],
+    allowedRoles: ["admin", "owner", "manager"],
   });
   const [bills, setBills] = useState([]);
   const [error, setError] = useState("");
