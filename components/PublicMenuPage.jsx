@@ -30,6 +30,8 @@ export default function PublicMenuPage({ restaurantId, restaurant, slug }) {
   const [restaurantInfo, setRestaurantInfo] = useState(restaurant);
   const [queryError, setQueryError] = useState(null);
   const [menuSearch, setMenuSearch] = useState("");
+  const [isCartOpen, setIsCartOpen] = useState(false);
+  const [isCheckoutModalOpen, setIsCheckoutModalOpen] = useState(false);
 
   useEffect(() => {
     fetchMenuItems();
@@ -185,7 +187,10 @@ export default function PublicMenuPage({ restaurantId, restaurant, slug }) {
                     ₹{cartTotal.toFixed(0)}
                   </p>
                 </div>
-                <button className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition">
+                <button
+                  onClick={() => setIsCartOpen(true)}
+                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition"
+                >
                   <ShoppingCart className="w-5 h-5 inline mr-2" />
                   {itemCount} Items
                 </button>
@@ -274,6 +279,118 @@ export default function PublicMenuPage({ restaurantId, restaurant, slug }) {
           <p>Powered by <strong>DineBoss</strong></p>
         </div>
       </footer>
+
+      {/* Slide-over Cart Panel */}
+      {isCartOpen && (
+        <div className="fixed inset-0 z-50 overflow-hidden">
+          <div className="absolute inset-0 bg-black/50 transition-opacity" onClick={() => setIsCartOpen(false)} />
+          <div className="fixed inset-y-0 right-0 max-w-full flex pl-10">
+            <div className="w-screen max-w-md bg-white dark:bg-gray-800 shadow-xl flex flex-col">
+              <div className="px-6 py-6 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
+                <h2 className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                  <ShoppingCart className="w-5 h-5 text-blue-600" />
+                  Your Cart
+                </h2>
+                <button
+                  onClick={() => setIsCartOpen(false)}
+                  className="text-gray-400 hover:text-gray-500 text-2xl font-medium"
+                >
+                  &times;
+                </button>
+              </div>
+
+              {/* Scrollable list */}
+              <div className="flex-1 overflow-y-auto px-6 py-6 space-y-4">
+                {selectedItems.map((item) => (
+                  <div key={item.id} className="flex items-center justify-between border-b border-gray-100 dark:border-gray-700/50 pb-4">
+                    <div className="flex-1">
+                      <h4 className="font-semibold text-gray-900 dark:text-white">{item.name}</h4>
+                      <p className="text-sm text-gray-500">₹{item.price}</p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => handleRemoveFromCart(item)}
+                        className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-gray-500 hover:text-gray-700"
+                      >
+                        &minus;
+                      </button>
+                      <span className="w-6 text-center text-sm font-semibold text-gray-900 dark:text-white">{item.quantity}</span>
+                      <button
+                        onClick={() => handleAddToCart(item)}
+                        className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-gray-500 hover:text-gray-700"
+                      >
+                        +
+                      </button>
+                    </div>
+                    <p className="ml-4 font-bold text-gray-900 dark:text-white">₹{(item.price * item.quantity).toFixed(0)}</p>
+                  </div>
+                ))}
+              </div>
+
+              {/* Footer */}
+              <div className="border-t border-gray-200 dark:border-gray-700 px-6 py-6 bg-gray-50 dark:bg-gray-900 space-y-4">
+                <div className="flex justify-between text-base font-medium text-gray-900 dark:text-white">
+                  <p>Subtotal</p>
+                  <p>₹{cartTotal.toFixed(0)}</p>
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setIsCheckoutModalOpen(true)}
+                    className="flex-1 py-3 px-4 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium shadow transition text-center"
+                  >
+                    Check Out
+                  </button>
+                  <button
+                    onClick={() => {
+                      setSelectedItems([]);
+                      setIsCartOpen(false);
+                      toast.success("Cart cleared");
+                    }}
+                    className="py-3 px-4 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition"
+                  >
+                    Clear
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Checkout Info Modal */}
+      {isCheckoutModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="fixed inset-0 bg-black/60" onClick={() => setIsCheckoutModalOpen(false)} />
+          <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 max-w-sm w-full shadow-2xl relative z-10 border border-gray-200 dark:border-gray-700">
+            <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-2">How to Place Your Order</h3>
+            <p className="text-sm text-gray-600 dark:text-gray-400 mb-6">
+              You are currently viewing the online public menu. To order:
+            </p>
+            <div className="space-y-4 mb-6">
+              <div className="p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
+                <p className="font-semibold text-blue-800 dark:text-blue-200 text-sm">📍 Dining at the restaurant?</p>
+                <p className="text-xs text-blue-700 dark:text-blue-300 mt-1">
+                  Please scan the QR code located on your table to place a direct order to the kitchen.
+                </p>
+              </div>
+              {restaurantInfo?.phone && (
+                <div className="p-4 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg">
+                  <p className="font-semibold text-green-800 dark:text-green-200 text-sm">📞 Ordering Take-Away / Delivery?</p>
+                  <p className="text-xs text-green-700 dark:text-green-300 mt-1">
+                    Call us directly at <a href={`tel:${restaurantInfo.phone}`} className="underline font-semibold text-blue-600 dark:text-blue-400">{restaurantInfo.phone}</a> to place your order manually.
+                  </p>
+                </div>
+              )}
+            </div>
+            <button
+              onClick={() => setIsCheckoutModalOpen(false)}
+              className="w-full py-2.5 bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-800 dark:text-white rounded-lg font-medium transition"
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
